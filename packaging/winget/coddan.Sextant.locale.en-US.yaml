@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: coddan.Sextant
+PackageVersion: 1.1.5
+PackageLocale: en-US
+Publisher: coddan
+PublisherUrl: https://github.com/coddan
+PublisherSupportUrl: https://github.com/coddan/sextant/issues
+PackageName: Sextant
+PackageUrl: https://github.com/coddan/sextant
+License: Apache-2.0
+LicenseUrl: https://github.com/coddan/sextant/blob/main/LICENSE
+ShortDescription: SSH dashboard, manager and desktop client for Windows.
+Description: |-
+  Sextant keeps every server you manage in one window: a dashboard with live
+  CPU, RAM and disk, a full PTY terminal per host, an SFTP browser with an
+  in-app file editor, snippets that run across many hosts at once, port
+  forwarding and one-click SSH key setup.
+Moniker: sextant-gui
+Tags:
+  - ssh
+  - sftp
+  - terminal
+  - remote
+  - server
+  - dashboard
+ReleaseNotesUrl: https://github.com/coddan/sextant/releases
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

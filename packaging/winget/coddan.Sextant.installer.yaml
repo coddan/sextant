@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: coddan.Sextant
+PackageVersion: 1.1.5
+Platform:
+  - Windows.Desktop
+MinimumOSVersion: 10.0.17763.0
+InstallerType: zip
+NestedInstallerType: portable
+NestedInstallerFiles:
+  - RelativeFilePath: sextant-gui.exe
+    PortableCommandAlias: sextant-gui
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/coddan/sextant/releases/download/v1.1.5/sextant-gui-x86_64-pc-windows-gnu.zip
+    # Placeholder: fill in with the hash from the release's SHA256SUMS
+    # (see packaging/winget/README.md).
+    InstallerSha256: 0000000000000000000000000000000000000000000000000000000000000000
+ManifestType: installer
+ManifestVersion: 1.6.0

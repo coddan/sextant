@@ -1,0 +1,9 @@
+# Build output.
+/sextant
+/sextant-gui
+/sextant.exe
+/sextant-gui.exe
+/dist
+
+# Editor and OS noise.
+.DS_Store

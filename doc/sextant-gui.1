@@ -1,0 +1,51 @@
+.TH sextant-gui 1 "sextant-gui 1.1.5"
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.SH NAME
+sextant-gui \- desktop SSH dashboard & server manager
+.SH SYNOPSIS
+.B sextant-gui
+.RI [ command ]
+.SH DESCRIPTION
+.B sextant-gui
+is the desktop client of Sextant, built with Fyne. It shows the same
+dashboard as the terminal client, with a real terminal per host (rendered from
+the built-in VT emulator), an SFTP browser with an in-app file editor, live
+metrics, snippets that run across hosts, port forwards and a one-click SSH key
+setup wizard.
+.PP
+The terminal client is
+.BR sextant (1).
+Both read and write the same JSON configuration, so hosts created in one
+appear in the other.
+.SH COMMANDS
+.TP
+.B version
+Print the version and exit.
+.TP
+.B help
+Print a short usage summary and exit.
+.TP
+.B sync
+Push or pull the encrypted configuration bundle
+.RB ( push | pull " with " --local " or " --webdav ).
+.SH ENVIRONMENT
+.TP
+.B SEXTANT_PORTABLE
+When set to
+.BR 1 ,
+configuration is stored next to the executable. A file named
+.B sextant.portable
+next to the executable has the same effect.
+.TP
+.B WAYLAND_DISPLAY
+On Linux, if the window does not appear under Wayland, start with
+.B WAYLAND_DISPLAY=
+to fall back to X11.
+.SH FILES
+See
+.BR sextant (1)
+for the configuration files; both clients use the same directory.
+.SH SEE ALSO
+.BR sextant (1),
+.BR ssh (1)

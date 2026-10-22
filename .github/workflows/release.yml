@@ -1,0 +1,212 @@
+name: Release
+
+# Triggered only by pushing a tag like v1.1.5.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  # Manual dry run: builds every artifact but skips publishing (the publish job
+  # is gated on a tag), so a release can be validated before tagging.
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ── 1. Terminal client: pure Go, cross-compiled with CGO disabled ──────────
+  tui:
+    name: TUI ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { goos: linux,   goarch: amd64, target: x86_64-unknown-linux-gnu,  ext: tar.gz }
+          - { goos: linux,   goarch: arm64, target: aarch64-unknown-linux-gnu, ext: tar.gz }
+          - { goos: darwin,  goarch: amd64, target: x86_64-apple-darwin,      ext: tar.gz }
+          - { goos: darwin,  goarch: arm64, target: aarch64-apple-darwin,     ext: tar.gz }
+          - { goos: windows, goarch: amd64, target: x86_64-pc-windows-gnu,    ext: zip }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-go@d35c59abb061a4a6fb296baff7ee0d80cd916e38 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build sextant
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
+          bin="sextant"
+          [ "$GOOS" = "windows" ] && bin="sextant.exe"
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$bin" ./cmd/sextant
+
+      - name: Package
+        run: |
+          name="sextant-${{ matrix.target }}"
+          mkdir -p dist
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            zip -q "dist/${name}.zip" sextant.exe
+          else
+            tar -czf "dist/${name}.tar.gz" sextant
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sextant-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── 2. Desktop client: Fyne needs CGO, so each OS builds natively ──────────
+  gui:
+    name: GUI ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest,  goarch: amd64, target: x86_64-unknown-linux-gnu,  ext: tar.gz }
+          - { os: macos-13,       goarch: amd64, target: x86_64-apple-darwin,      ext: tar.gz }
+          - { os: macos-14,       goarch: arm64, target: aarch64-apple-darwin,     ext: tar.gz }
+          - { os: windows-latest, goarch: amd64, target: x86_64-pc-windows-gnu,    ext: zip }
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-go@d35c59abb061a4a6fb296baff7ee0d80cd916e38 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+
+      - name: Install Windows build dependencies (MSYS2)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: mingw-w64-x86_64-gcc
+
+      - name: Build sextant-gui (Unix)
+        if: runner.os != 'Windows'
+        env:
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "1"
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o sextant-gui ./cmd/sextant-gui
+
+      - name: Build sextant-gui (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
+          export CC=gcc
+          export CGO_ENABLED=1
+          go build -trimpath -ldflags "-s -w -X main.version=$version" -o sextant-gui.exe ./cmd/sextant-gui
+
+      - name: Package
+        shell: bash
+        run: |
+          name="sextant-gui-${{ matrix.target }}"
+          mkdir -p dist
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            zip -q "dist/${name}.zip" sextant-gui.exe
+          else
+            tar -czf "dist/${name}.tar.gz" sextant-gui
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sextant-gui-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  # ── 3. Collect every archive, hash it and publish the release ──────────────
+  publish:
+    name: Publish release
+    needs: [tui, gui]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS
+        working-directory: artifacts
+        run: sha256sum * > SHA256SUMS
+
+      - name: Update winget manifests
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          scripts/winget-update.sh "$version" "" packaging/winget < artifacts/SHA256SUMS
+          # Lay the manifests out the way winget-pkgs expects and ship them as a
+          # release asset, so a submission needs no manual hashing.
+          root="winget/manifests/coddan/Sextant/$version"
+          mkdir -p "$root"
+          cp packaging/winget/*.yaml "$root/"
+          (cd winget && zip -q -r "../artifacts/winget-manifests-v$version.zip" manifests)
+
+      - name: Upload winget manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: winget-manifests
+          path: winget/manifests
+          if-no-files-found: error
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*
+          generate_release_notes: true
+
+  # ── 4. Optional: submit the filled manifests to microsoft/winget-pkgs ──────
+  winget:
+    name: Submit winget manifests
+    needs: publish
+    runs-on: windows-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    env:
+      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    steps:
+      - name: No token configured
+        if: env.WINGET_TOKEN == ''
+        run: echo "::notice::WINGET_TOKEN is not set; skipping submission. Download winget-manifests-*.zip from the release and run 'wingetcreate submit'."
+
+      - name: Download manifests
+        if: env.WINGET_TOKEN != ''
+        uses: actions/download-artifact@v4
+        with:
+          name: winget-manifests
+          path: winget
+
+      - name: Install wingetcreate
+        if: env.WINGET_TOKEN != ''
+        shell: pwsh
+        run: Invoke-WebRequest https://aka.ms/wingetcreate/latest -OutFile wingetcreate.exe
+
+      - name: Submit
+        if: env.WINGET_TOKEN != ''
+        shell: pwsh
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          $v = $env:VERSION.TrimStart('v')
+          $manifests = "winget/coddan/Sextant/$v"
+          .\wingetcreate.exe validate $manifests
+          .\wingetcreate.exe submit $manifests --token $env:WINGET_TOKEN

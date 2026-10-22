@@ -1,0 +1,144 @@
+.TH sextant 1 "sextant 1.1.5"
+.ie \n(.g .ds Aq \(aq
+.el .ds Aq '
+.SH NAME
+sextant \- terminal SSH dashboard & server manager
+.SH SYNOPSIS
+.B sextant
+.RI [ command ]
+.SH DESCRIPTION
+.B sextant
+is the terminal client of Sextant. It keeps every server you manage in one
+dashboard: live CPU, RAM and disk, a full PTY terminal per host, an SFTP
+browser, snippets that run on many hosts at once, local and dynamic port
+forwarding, and a one-click SSH key setup.
+.PP
+The desktop client is
+.BR sextant-gui (1).
+Both frontends share the same engine and the same configuration files, so a
+host added in one appears in the other.
+.SH COMMANDS
+.TP
+.B version
+Print the version and exit.
+.TP
+.B help
+Print a short usage summary and exit.
+.TP
+.B sync
+Push or pull the encrypted configuration bundle
+.RB ( push | pull " with " --local " or " --webdav ).
+.SH ENVIRONMENT
+.TP
+.B EDITOR
+The editor opened when a remote file is edited from the SFTP browser
+(defaults to
+.BR vi (1)).
+.TP
+.B SEXTANT_PORTABLE
+When set to
+.BR 1 ,
+configuration is stored next to the executable instead of in the user
+configuration directory. A file named
+.B sextant.portable
+(or
+.BR portable )
+next to the executable has the same effect.
+.SH FILES
+Configuration is stored as JSON in the Sextant configuration directory:
+.BR ~/.config/sextant
+on Linux,
+.BR "~/Library/Application Support/sextant"
+on macOS and
+.BR "%APPDATA%\\sextant"
+on Windows.
+.TP
+.B settings.json
+Interface, terminal and notification settings.
+.TP
+.B hosts.json
+Saved hosts and groups. Secret values are referenced by ID, never stored here.
+.TP
+.B snippets.json
+Saved commands.
+.TP
+.B secrets.json, secrets.key
+Encrypted credentials. The key file is mode 0600 by default; a master
+password (Argon2id) can be enabled instead.
+.TP
+.B state.json
+Window and session state.
+.TP
+.B known_hosts
+Host keys learned on first use, in OpenSSH format.
+.PP
+The OpenSSH client configuration
+.RB ( ~/.ssh/config )
+is read, never written. Literal
+.B Host
+blocks override wildcard defaults.
+.SH KEY BINDINGS
+.TP
+.B Dashboard
+.BR \(uarr / k ", " \(darr / j
+move,
+.B g / G
+first / last,
+.B Enter
+connect,
+.B a
+add,
+.B e
+edit,
+.B d
+delete,
+.B /
+filter,
+.B o
+show only online hosts,
+.B s
+snippets,
+.B f
+SFTP,
+.B F
+port forwards,
+.B K
+SSH key setup,
+.B ,
+settings,
+.B ?
+help,
+.B q
+quit.
+.TP
+.B Terminal
+.B Ctrl+F
+find in the buffer, page up / page down scroll the scrollback,
+.B F10
+close the tab,
+.B Ctrl+Q
+quit. Text copied by a remote program through OSC 52 lands in the local
+clipboard.
+.TP
+.B "SFTP"
+.BR \(uarr / \(darr
+move,
+.B Enter
+open or download,
+.B Backspace
+go to the parent directory,
+.B u
+upload,
+.B n
+new folder,
+.B e
+edit a file in
+.BR $EDITOR ,
+.B d
+delete,
+.B r
+refresh.
+.SH SEE ALSO
+.BR sextant-gui (1),
+.BR ssh (1),
+.BR sftp (1)

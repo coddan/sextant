@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -mod=readonly
+
+jobs:
+  hygiene:
+    name: Repo hygiene guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - name: Run hygiene guard
+        run: ./scripts/hygiene-guard.sh
+
+  build:
+    name: Build, vet and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb296baff7ee0d80cd916e38 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The Fyne GUI needs CGO and the X11/OpenGL headers. The TUI does not, but
+      # building the whole module in one job keeps the green light honest: nothing
+      # can rot behind an untested package.
+      - name: Install GUI build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+
+      - name: Check formatting
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files need gofmt:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Verify go.mod/go.sum are tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+  tui-build-independence:
+    name: TUI builds without CGO
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Install Go
+        uses: actions/setup-go@d35c59abb061a4a6fb296baff7ee0d80cd916e38 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # The terminal client must stay installable on a box with no GUI
+      # toolchain, so it is built and tested on its own with CGO disabled.
+      - name: Build and test the TUI with CGO off
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          go build ./cmd/sextant
+          test -f sextant || { echo "sextant binary missing"; exit 1; }
+          # Skip the Fyne package: it is the one that needs CGO by design.
+          packages="$(go list ./... | grep -v '/internal/gui$')"
+          go test $packages -count=1
+          echo "OK: sextant builds and passes tests without CGO."
