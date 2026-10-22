@@ -90,7 +90,10 @@ jobs:
         run: |
           go build ./cmd/sextant
           test -f sextant || { echo "sextant binary missing"; exit 1; }
-          # Skip the Fyne package: it is the one that needs CGO by design.
-          packages="$(go list ./... | grep -v '/internal/gui$')"
+          # Skip the Fyne frontend: it is the one that needs CGO by design.
+          # `go list -e` keeps listing the healthy packages even though the GUI
+          # command cannot be loaded without CGO; the filter then drops both it
+          # and internal/gui before testing.
+          packages="$(go list -e ./... | grep -vE '(/internal/gui|/cmd/sextant-gui)$')"
           go test $packages -count=1
           echo "OK: sextant builds and passes tests without CGO."
