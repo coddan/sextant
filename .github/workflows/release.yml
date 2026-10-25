@@ -71,10 +71,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - { os: ubuntu-latest,  goarch: amd64, target: x86_64-unknown-linux-gnu,  ext: tar.gz }
-          - { os: macos-15-intel, goarch: amd64, target: x86_64-apple-darwin,      ext: tar.gz }
-          - { os: macos-15,       goarch: arm64, target: aarch64-apple-darwin,     ext: tar.gz }
-          - { os: windows-latest, goarch: amd64, target: x86_64-pc-windows-gnu,    ext: zip }
+          - { os: ubuntu-latest,  goarch: amd64, target: x86_64-unknown-linux-gnu }
+          - { os: macos-15-intel, goarch: amd64, target: x86_64-apple-darwin }
+          - { os: macos-15,       goarch: arm64, target: aarch64-apple-darwin }
+          - { os: windows-latest, goarch: amd64, target: x86_64-pc-windows-gnu }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -95,6 +95,10 @@ jobs:
           msystem: MINGW64
           update: true
           install: mingw-w64-x86_64-gcc
+          # The default "minimal" path type only inherits the core Windows
+          # directories, which hides the Go toolchain that setup-go installed
+          # in the hosted tool cache, so `go` would not be found below.
+          path-type: inherit
 
       - name: Build sextant-gui (Unix)
         if: runner.os != 'Windows'
@@ -116,16 +120,21 @@ jobs:
           export CGO_ENABLED=1
           go build -trimpath -ldflags "-s -w -X main.version=$version" -o sextant-gui.exe ./cmd/sextant-gui
 
-      - name: Package
-        shell: bash
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
         run: |
           name="sextant-gui-${{ matrix.target }}"
           mkdir -p dist
-          if [ "${{ matrix.ext }}" = "zip" ]; then
-            zip -q "dist/${name}.zip" sextant-gui.exe
-          else
-            tar -czf "dist/${name}.tar.gz" sextant-gui
-          fi
+          tar -czf "dist/${name}.tar.gz" sextant-gui
+
+      # The Windows runner has no `zip`, so archive with PowerShell instead.
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $name = "sextant-gui-${{ matrix.target }}"
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Compress-Archive -Path sextant-gui.exe -DestinationPath "dist/$name.zip" -Force
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
