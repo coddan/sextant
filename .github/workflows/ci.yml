@@ -37,13 +37,13 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      # The Fyne GUI needs CGO and the X11/OpenGL headers. The TUI does not, but
-      # building the whole module in one job keeps the green light honest: nothing
-      # can rot behind an untested package.
+      # The Fyne GUI needs CGO plus the X11/OpenGL headers, and GLFW 3.4
+      # enables both the X11 and Wayland backends by default, so the Wayland
+      # client and xkbcommon headers are required even for an X11 build.
       - name: Install GUI build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev
+          sudo apt-get install -y gcc libgl1-mesa-dev xorg-dev libwayland-dev libxkbcommon-dev
 
       - name: Check formatting
         run: |
