@@ -6,6 +6,28 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- **Multiple desktop terminals.** Every host opened from the dashboard gets its
+  own terminal tab. Sessions keep running while you switch to the dashboard,
+  open another host, or use another tab, and each one closes independently.
+- **Card dashboard with automatic metrics.** The desktop host list is now a
+  responsive card grid showing reachability, CPU/RAM/disk severity bars, OS,
+  uptime and load. Metrics and reachability refresh in the background on the
+  configured interval using stored credentials and the SSH agent; hosts that
+  need an interactive login or a new host key are marked *Limited* and can be
+  refreshed individually.
+
+### Fixed
+
+- **Unix metrics now populate again.** The section markers were sent as
+  `echo ###SEXTANT-…`, which a shell treats as a comment, so CPU, memory, disk
+  and the other sections were silently discarded. The markers are now quoted.
+- **Windows GUI no longer opens a `cmd` window.** The desktop binary is linked
+  with `-H=windowsgui`, so closing a console window cannot terminate the app.
+- Terminal sessions survive a theme or language change instead of being
+  disconnected when the interface is rebuilt.
+
 ## [1.1.5] — 2026-10-21
 
 Sextant is a Go implementation of the SSH dashboard: one engine, two clients.

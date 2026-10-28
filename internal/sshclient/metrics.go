@@ -154,75 +154,74 @@ func splitSections(output string) map[string]string {
 	return sections
 }
 
-// section renders a marker the parser recognises.
-func section(name string) string { return shSectionBegin + name + "\n" }
+// section renders a marker the parser recognises. The marker is quoted: an
+// unquoted leading # starts a shell comment, so `echo ###SEXTANT-SYS` prints an
+// empty line and every metric section disappears.
+func section(name string) string { return "echo '" + shSectionBegin + name + "'\n" }
 
-const linuxScript = `echo ` + shSectionBegin + `SYS
+var linuxScript = section("SYS") + `
 uname -s; uname -r; hostname
-echo ` + shSectionBegin + `OSREL
+` + section("OSREL") + `
 grep PRETTY_NAME /etc/os-release 2>/dev/null | head -1
-echo ` + shSectionBegin + `CPU
+` + section("CPU") + `
 LC_ALL=C top -bn1 2>/dev/null | head -20
-echo ` + shSectionBegin + `STAT
+` + section("STAT") + `
 cat /proc/stat 2>/dev/null | head -1
-echo ` + shSectionBegin + `MEM
+` + section("MEM") + `
 free -b 2>/dev/null
-echo ` + shSectionBegin + `MEMINFO
+` + section("MEMINFO") + `
 cat /proc/meminfo 2>/dev/null | head -8
-echo ` + shSectionBegin + `DISK
+` + section("DISK") + `
 df -k / 2>/dev/null
-echo ` + shSectionBegin + `UPTIME
+` + section("UPTIME") + `
 LC_ALL=C uptime 2>/dev/null
-echo ` + shSectionBegin + `LOADAVG
+` + section("LOADAVG") + `
 cat /proc/loadavg 2>/dev/null
-echo ` + shSectionBegin + `PS
+` + section("PS") + `
 ps -eo pcpu,pmem,comm --sort=-pcpu 2>/dev/null | head -4
-echo ` + shSectionBegin + `DOCKERUP
+` + section("DOCKERUP") + `
 docker ps -q 2>/dev/null | wc -l
-echo ` + shSectionBegin + `DOCKERALL
+` + section("DOCKERALL") + `
 docker ps -aq 2>/dev/null | wc -l
-echo ` + shSectionBegin + `GPU
+` + section("GPU") + `
 command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total --format=csv,noheader,nounits 2>/dev/null
-echo ` + shSectionBegin + `ROCM
+` + section("ROCM") + `
 command -v rocm-smi >/dev/null 2>&1 && rocm-smi --showuse --showmeminfo vram --showproductname --csv 2>/dev/null
-echo ` + shSectionBegin + `END
-`
+` + section("END")
 
-const darwinScript = `echo ` + shSectionBegin + `SYS
+var darwinScript = section("SYS") + `
 uname -s; uname -r; hostname
-echo ` + shSectionBegin + `CPU
+` + section("CPU") + `
 LC_ALL=C top -l 1 -n 0 2>/dev/null | head -20
-echo ` + shSectionBegin + `VMSTAT
+` + section("VMSTAT") + `
 vm_stat 2>/dev/null
-echo ` + shSectionBegin + `MEMSIZE
+` + section("MEMSIZE") + `
 sysctl hw.memsize 2>/dev/null
-echo ` + shSectionBegin + `DISK
+` + section("DISK") + `
 df -k / 2>/dev/null
-echo ` + shSectionBegin + `UPTIME
+` + section("UPTIME") + `
 LC_ALL=C uptime 2>/dev/null
-echo ` + shSectionBegin + `PS
+` + section("PS") + `
 ps -A -o pcpu,pmem,comm 2>/dev/null | sort -rn | head -4
-echo ` + shSectionBegin + `DOCKERUP
+` + section("DOCKERUP") + `
 docker ps -q 2>/dev/null | wc -l
-echo ` + shSectionBegin + `DOCKERALL
+` + section("DOCKERALL") + `
 docker ps -aq 2>/dev/null | wc -l
-echo ` + shSectionBegin + `END
-`
+` + section("END")
 
-const bsdScript = `echo ` + shSectionBegin + `SYS
+var bsdScript = section("SYS") + `
 uname -s; uname -r; hostname
-echo ` + shSectionBegin + `CPU
+` + section("CPU") + `
 LC_ALL=C top -b -d1 2>/dev/null | head -20 || LC_ALL=C top -n 1 2>/dev/null | head -20
-echo ` + shSectionBegin + `SYSCTL
+` + section("SYSCTL") + `
 sysctl vm.stats.vm.v_page_count hw.pagesize vm.stats.vm.v_free_count vm.stats.vm.v_inactive_count vfs.bufspace kstat.zfs.misc.arcstats.size kstat.zfs.misc.arcstats.c_min 2>/dev/null
-echo ` + shSectionBegin + `DISK
+` + section("DISK") + `
 df -k / 2>/dev/null
-echo ` + shSectionBegin + `UPTIME
+` + section("UPTIME") + `
 LC_ALL=C uptime 2>/dev/null
-echo ` + shSectionBegin + `PS
+` + section("PS") + `
 ps -axo pcpu,pmem,comm 2>/dev/null | sort -rn | head -4
-echo ` + shSectionBegin + `END
-`
+` + section("END")
 
 // windowsScript collects the same fields through PowerShell/CIM.
 const windowsScript = `powershell -NoProfile -Command "$ErrorActionPreference='SilentlyContinue'; ` +

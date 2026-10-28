@@ -49,6 +49,7 @@ const (
 	DashboardShowOnlyOnline    Key = "dashboard.show_only_online"
 	DashboardOnline            Key = "dashboard.online"
 	DashboardOffline           Key = "dashboard.offline"
+	DashboardDegraded          Key = "dashboard.degraded"
 
 	// Host editor.
 	HostTitle           Key = "host.title"
@@ -84,6 +85,8 @@ const (
 	TerminalStatusConnected    Key = "terminal.status_connected"
 	TerminalStatusDisconnected Key = "terminal.status_disconnected"
 	TerminalStatusConnecting   Key = "terminal.status_connecting"
+	TerminalNoSessions         Key = "terminal.no_sessions"
+	TerminalCloseConfirm       Key = "terminal.close_confirm"
 
 	// SFTP.
 	SFTPTitle           Key = "sftp.title"
@@ -159,10 +162,15 @@ const (
 	NotifyImportedCount    Key = "notify.imported_count"
 
 	// Metrics.
-	MetricsCPU        Key = "metrics.cpu"
-	MetricsRAM        Key = "metrics.ram"
-	MetricsDisk       Key = "metrics.disk"
-	MetricsCollecting Key = "metrics.collecting"
+	MetricsCPU             Key = "metrics.cpu"
+	MetricsRAM             Key = "metrics.ram"
+	MetricsDisk            Key = "metrics.disk"
+	MetricsRefresh         Key = "metrics.refresh"
+	MetricsCollecting      Key = "metrics.collecting"
+	MetricsLoginRequired   Key = "metrics.login_required"
+	MetricsHostKeyRequired Key = "metrics.host_key_required"
+	MetricsHostKeyChanged  Key = "metrics.host_key_changed"
+	MetricsTCPOnly         Key = "metrics.tcp_only"
 
 	// Errors.
 	ErrorAuthFailed     Key = "error.auth_failed"

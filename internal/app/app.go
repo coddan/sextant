@@ -6,6 +6,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -16,6 +17,10 @@ import (
 	"github.com/coddan/sextant/internal/model"
 	"github.com/coddan/sextant/internal/sshclient"
 )
+
+// errBackgroundAuth is returned by the quiet dialer when a host needs input
+// that background metric collection cannot provide.
+var errBackgroundAuth = errors.New("interactive authentication required")
 
 // Runtime is the shared application state.
 type Runtime struct {
@@ -187,6 +192,47 @@ func (rt *Runtime) Metrics(ctx context.Context, host model.Host) model.Metrics {
 			return model.Metrics{Hostname: host.Name, CollectedAt: time.Now(), Error: err.Error()}
 		}
 	}
+	return sshclient.Collect(ctx, client, host)
+}
+
+// MetricsQuiet collects a dashboard sample without ever asking the user for
+// input. It reuses a live connection when there is one, otherwise it dials with
+// stored credentials and the local agent. Hosts that need a password or an
+// unknown host key fail quietly; the dashboard can then offer a manual refresh.
+func (rt *Runtime) MetricsQuiet(ctx context.Context, host model.Host) model.Metrics {
+	if client, ok := rt.Client(host.ID); ok {
+		return sshclient.Collect(ctx, client, host)
+	}
+	// A fresh dialer per call keeps its known_hosts view current when the user
+	// has just trusted a new key in the foreground.
+	dialer := &sshclient.Dialer{
+		Prompts: sshclient.Prompts{
+			Password: func(string, int) (string, error) {
+				return "", errBackgroundAuth
+			},
+			Passphrase: func(string) (string, error) {
+				return "", errBackgroundAuth
+			},
+			HostKey: func(string, string, string) (bool, error) {
+				// Returning false lets the dialer report ErrUnknownHostKey,
+				// which is more useful on the dashboard than an auth error.
+				return false, nil
+			},
+			KeyboardInteractive: func(string, string, string, []string, []bool) ([]string, error) {
+				return nil, errBackgroundAuth
+			},
+		},
+		Cache:             rt.Dialer.Cache,
+		Timeout:           20 * time.Second,
+		KnownHostsPath:    rt.Store.Paths.KnownHosts,
+		AcceptNewHostKeys: true,
+		AskHostKeys:       true,
+	}
+	client, err := dialer.Dial(ctx, host, rt.Store.Hosts, rt.Resolver())
+	if err != nil {
+		return model.Metrics{Hostname: host.Name, CollectedAt: time.Now(), Error: err.Error()}
+	}
+	defer client.Close()
 	return sshclient.Collect(ctx, client, host)
 }
 

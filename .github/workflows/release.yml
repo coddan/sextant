@@ -118,7 +118,10 @@ jobs:
           [ "$version" = "$GITHUB_REF_NAME" ] && version="dev"
           export CC=gcc
           export CGO_ENABLED=1
-          go build -trimpath -ldflags "-s -w -X main.version=$version" -o sextant-gui.exe ./cmd/sextant-gui
+          # -H=windowsgui links against the Windows GUI subsystem so no console
+          # (cmd) window is attached. Without it, closing that console closes
+          # the app.
+          go build -trimpath -ldflags "-s -w -H=windowsgui -X main.version=$version" -o sextant-gui.exe ./cmd/sextant-gui
 
       - name: Package (Unix)
         if: runner.os != 'Windows'

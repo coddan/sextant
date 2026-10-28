@@ -49,6 +49,7 @@ var en = map[Key]string{
 	DashboardShowOnlyOnline:    "Show only online hosts",
 	DashboardOnline:            "Online",
 	DashboardOffline:           "Offline",
+	DashboardDegraded:          "Limited",
 
 	HostTitle:           "Host",
 	HostNew:             "New host",
@@ -82,6 +83,8 @@ var en = map[Key]string{
 	TerminalStatusConnected:    "Connected",
 	TerminalStatusDisconnected: "Disconnected",
 	TerminalStatusConnecting:   "Connecting…",
+	TerminalNoSessions:         "No terminals open.\nStart one from the Hosts tab.",
+	TerminalCloseConfirm:       "Close the terminal session to %s?",
 
 	SFTPTitle:           "SFTP",
 	SFTPRemotePath:      "Remote path",
@@ -150,10 +153,15 @@ var en = map[Key]string{
 	NotifyImportComplete:   "Import complete",
 	NotifyImportedCount:    "Imported %d host(s)",
 
-	MetricsCPU:        "CPU",
-	MetricsRAM:        "Memory",
-	MetricsDisk:       "Disk",
-	MetricsCollecting: "Collecting…",
+	MetricsCPU:             "CPU",
+	MetricsRAM:             "Memory",
+	MetricsDisk:            "Disk",
+	MetricsRefresh:         "Metrics",
+	MetricsCollecting:      "Collecting…",
+	MetricsLoginRequired:   "Metrics need a login. Use the Metrics button on this host.",
+	MetricsHostKeyRequired: "Host key is not trusted. Connect to this host once to verify it.",
+	MetricsHostKeyChanged:  "Host key changed. Verify this host before connecting.",
+	MetricsTCPOnly:         "TCP reachability monitor — no system metrics.",
 
 	ErrorAuthFailed:     "Authentication failed for %s",
 	ErrorHostKeyChanged: "The host key for %s changed. This may be a man-in-the-middle attack.",

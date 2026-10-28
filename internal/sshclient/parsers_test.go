@@ -1,6 +1,7 @@
 package sshclient
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -226,6 +227,46 @@ func TestParseWindowsMetrics(t *testing.T) {
 	almost(t, &m.GPUs[0].MemoryPct, 40)
 	if m.OS != "Microsoft Windows 11 Pro" {
 		t.Fatalf("os = %q", m.OS)
+	}
+}
+
+func TestMetricScriptsQuoteSectionMarkers(t *testing.T) {
+	scripts := map[string]struct {
+		script  string
+		markers []string
+	}{
+		"linux": {
+			script: linuxScript,
+			markers: []string{
+				"SYS", "OSREL", "CPU", "STAT", "MEM", "MEMINFO", "DISK",
+				"UPTIME", "LOADAVG", "PS", "DOCKERUP", "DOCKERALL", "GPU",
+				"ROCM", "END",
+			},
+		},
+		"darwin": {
+			script: darwinScript,
+			markers: []string{
+				"SYS", "CPU", "VMSTAT", "MEMSIZE", "DISK", "UPTIME", "PS",
+				"DOCKERUP", "DOCKERALL", "END",
+			},
+		},
+		"bsd": {
+			script: bsdScript,
+			markers: []string{
+				"SYS", "CPU", "SYSCTL", "DISK", "UPTIME", "PS", "END",
+			},
+		},
+	}
+	for name, tc := range scripts {
+		if strings.Contains(tc.script, "echo ###SEXTANT") {
+			t.Errorf("%s: unquoted marker is a shell comment: %q", name, tc.script)
+		}
+		for _, marker := range tc.markers {
+			want := "echo '###SEXTANT-" + marker + "'"
+			if !strings.Contains(tc.script, want) {
+				t.Errorf("%s: missing %q", name, want)
+			}
+		}
 	}
 }
 

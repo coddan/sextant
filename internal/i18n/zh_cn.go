@@ -44,6 +44,7 @@ var zhCN = map[Key]string{
 	DashboardShowOnlyOnline:    "仅显示在线主机",
 	DashboardOnline:            "在线",
 	DashboardOffline:           "离线",
+	DashboardDegraded:          "受限",
 
 	HostTitle:           "主机",
 	HostNew:             "新建主机",
@@ -77,6 +78,8 @@ var zhCN = map[Key]string{
 	TerminalStatusConnected:    "已连接",
 	TerminalStatusDisconnected: "已断开",
 	TerminalStatusConnecting:   "连接中…",
+	TerminalNoSessions:         "没有打开的终端。\n请在“主机”标签页中启动一个。",
+	TerminalCloseConfirm:       "关闭到 %s 的终端会话？",
 
 	SFTPTitle:           "SFTP",
 	SFTPRemotePath:      "远程路径",
@@ -145,10 +148,15 @@ var zhCN = map[Key]string{
 	NotifyImportComplete:   "导入完成",
 	NotifyImportedCount:    "已导入 %d 台主机",
 
-	MetricsCPU:        "CPU",
-	MetricsRAM:        "内存",
-	MetricsDisk:       "磁盘",
-	MetricsCollecting: "采集中…",
+	MetricsCPU:             "CPU",
+	MetricsRAM:             "内存",
+	MetricsDisk:            "磁盘",
+	MetricsRefresh:         "指标",
+	MetricsCollecting:      "采集中…",
+	MetricsLoginRequired:   "获取指标需要登录。请使用此主机卡片上的“指标”按钮。",
+	MetricsHostKeyRequired: "主机密钥未受信任。请先连接一次此主机进行验证。",
+	MetricsHostKeyChanged:  "主机密钥已更改。请在连接前验证此主机。",
+	MetricsTCPOnly:         "仅检测 TCP 连通性，不采集系统指标。",
 
 	ErrorAuthFailed:     "%s 认证失败",
 	ErrorHostKeyChanged: "%s 的主机密钥已更改。这可能是一次中间人攻击。",

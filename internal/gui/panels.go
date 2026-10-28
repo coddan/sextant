@@ -295,6 +295,7 @@ func (v *settingsView) apply() {
 	v.app.applyTheme()
 	v.app.setStatus(v.app.tr.T(i18n.SettingsSavedNotification))
 	v.app.rebuildUI()
+	v.app.startMetricsLoop()
 }
 
 func atoiDefault(s string, def int) int {

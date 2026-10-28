@@ -58,9 +58,10 @@ ones, including a GPU section when the driver exposes one.
 
 ### Real terminals
 A full PTY per host with a built-in VT emulator: 256-colour and true-colour
-output, scrollback with search (`Ctrl+F`), and a faithful cursor. Remote
-programs that copy through OSC 52 land in your local clipboard, so copying from
-an agent like Claude Code or Codex works.
+output, scrollback with search (`Ctrl+F`), and a faithful cursor. The desktop
+app keeps every session in its own tab, so you can open as many hosts as you
+need and leave them running. Remote programs that copy through OSC 52 land in
+your local clipboard, so copying from an agent like Claude Code or Codex works.
 
 ### SFTP
 Browse remote directories, upload, download, rename, delete trees, create
@@ -159,7 +160,14 @@ go build -o sextant ./cmd/sextant
 # desktop client — Fyne needs CGO and the GL/X11 headers
 sudo apt install gcc libgl1-mesa-dev xorg-dev   # Debian/Ubuntu
 go build -o sextant-gui ./cmd/sextant-gui
+
+# desktop client on Windows — build without the console window
+go build -ldflags "-H=windowsgui" -o sextant-gui.exe ./cmd/sextant-gui
 ```
+
+`-H=windowsgui` is required on Windows: without it the binary is attached to
+a `cmd` console, and closing that window also closes the app. The release
+builds already use it.
 
 If the linker cannot find `libXxf86vm` on a system where it exists under a
 versioned name, point CGO at a directory containing the unversioned symlink:

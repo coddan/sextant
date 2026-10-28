@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"fyne.io/fyne/v2"
@@ -17,7 +18,6 @@ import (
 	"github.com/coddan/sextant/internal/i18n"
 	"github.com/coddan/sextant/internal/model"
 	"github.com/coddan/sextant/internal/sshclient"
-	"github.com/coddan/sextant/internal/termutil"
 )
 
 // errCancelled is returned when the user dismisses a credential prompt.
@@ -34,26 +34,30 @@ type App struct {
 	tabs   *container.AppTabs
 	status *widget.Label
 
-	hostsBox   *fyne.Container
-	filterText string
-	onlyOnline *widget.Check
-	metrics    map[string]model.Metrics
+	hostsBox     *fyne.Container
+	hostsWrap    *fyne.Container
+	filterText   string
+	onlyOnline   *widget.Check
+	metrics      map[string]model.Metrics
+	probes       map[string]sshclient.ProbeResult
+	metricsRetry map[string]time.Time
+	metricsRun   bool
+	metricsOff   context.CancelFunc
 
-	termTab    *container.TabItem
-	termBody   *fyne.Container
-	termView   *TerminalView
-	termHost   *widget.Label
-	termCancel context.CancelFunc
-	shell      *sshclient.Shell
-
-	sftp   *sftpView
-	snip   *snippetView
-	sett   *settingsView
-	forw   *forwardsView
-	keys   *keySetupView
-	hosts  []model.Host
-	ctx    context.Context
-	cancel context.CancelFunc
+	termTab   *container.TabItem
+	termTabs  *container.AppTabs
+	termEmpty *container.TabItem
+	sessions  []*terminalSession
+	connMu    sync.Mutex
+	connects  map[string]*sync.Mutex
+	sftp      *sftpView
+	snip      *snippetView
+	sett      *settingsView
+	forw      *forwardsView
+	keys      *keySetupView
+	hosts     []model.Host
+	ctx       context.Context
+	cancel    context.CancelFunc
 }
 
 // Run opens the desktop window and blocks until it closes.
@@ -62,13 +66,15 @@ func Run(rt *sextant.Runtime) error {
 	w := fa.NewWindow("Sextant")
 	ctx, cancel := context.WithCancel(context.Background())
 	g := &App{
-		rt:      rt,
-		fa:      fa,
-		win:     w,
-		tr:      rt.Tr,
-		metrics: map[string]model.Metrics{},
-		ctx:     ctx,
-		cancel:  cancel,
+		rt:           rt,
+		fa:           fa,
+		win:          w,
+		tr:           rt.Tr,
+		metrics:      map[string]model.Metrics{},
+		probes:       map[string]sshclient.ProbeResult{},
+		metricsRetry: map[string]time.Time{},
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 	g.installPrompts()
 	g.applyTheme()
@@ -76,7 +82,9 @@ func Run(rt *sextant.Runtime) error {
 	w.SetOnDropped(g.onDropped)
 	w.Resize(fyne.NewSize(1120, 740))
 	w.CenterOnScreen()
+	g.startMetricsLoop()
 	w.SetOnClosed(func() {
+		g.closeAllSessions()
 		g.disconnectAll()
 		cancel()
 	})
@@ -84,17 +92,43 @@ func Run(rt *sextant.Runtime) error {
 	return nil
 }
 
-// buildTerminalTab creates the terminal pane. Its body is swapped when a
-// session starts.
+// buildTerminalTab creates the terminal workspace. Each SSH session gets its
+// own tab inside it, so several live terminals can be kept open at once.
 func (g *App) buildTerminalTab() *container.TabItem {
-	g.termHost = widget.NewLabel(g.tr.T(i18n.TerminalStatusDisconnected))
-	closeBtn := widget.NewButtonWithIcon(g.tr.T(i18n.CommonClose), theme.CancelIcon(), g.closeTerminal)
-	bar := container.NewBorder(nil, nil, nil, closeBtn, g.termHost)
-	placeholder := widget.NewLabel(g.tr.T(i18n.TerminalStatusDisconnected))
-	placeholder.Alignment = fyne.TextAlignCenter
-	g.termBody = container.NewStack(placeholder)
-	content := container.NewBorder(bar, nil, nil, nil, g.termBody)
-	return container.NewTabItemWithIcon(g.tr.T(i18n.NavTerminal), theme.ComputerIcon(), content)
+	selected := 0
+	if g.termTabs != nil {
+		selected = g.termTabs.SelectedIndex()
+	}
+	g.termTabs = container.NewAppTabs()
+	g.termTabs.SetTabLocation(container.TabLocationTop)
+	g.termEmpty = nil
+	g.termTabs.OnSelected = func(item *container.TabItem) {
+		for _, s := range g.sessions {
+			if s.tab == item {
+				g.win.Canvas().Focus(s.view)
+				state := g.tr.T(i18n.TerminalStatusConnected)
+				if s.closed {
+					state = g.tr.T(i18n.TerminalStatusDisconnected)
+				}
+				g.setStatus(fmt.Sprintf("%s: %s", s.host.Name, state))
+				return
+			}
+		}
+	}
+	for _, s := range g.sessions {
+		icon := theme.ComputerIcon()
+		if s.closed {
+			icon = theme.WarningIcon()
+		}
+		s.tab = container.NewTabItemWithIcon(s.title, icon, s.buildContent())
+		g.termTabs.Append(s.tab)
+	}
+	if len(g.sessions) == 0 {
+		g.showTerminalPlaceholder()
+	} else {
+		g.termTabs.SelectIndex(clampInt(selected, 0, len(g.sessions)-1))
+	}
+	return container.NewTabItemWithIcon(g.tr.T(i18n.NavTerminal), theme.ComputerIcon(), g.termTabs)
 }
 
 // buildUI creates the tab layout. It is called again after a language change so
@@ -114,6 +148,8 @@ func (g *App) buildUI() fyne.CanvasObject {
 	)
 	g.tabs.OnSelected = func(item *container.TabItem) {
 		switch item.Text {
+		case g.tr.T(i18n.NavTerminal):
+			g.focusSelectedSession()
 		case g.tr.T(i18n.ForwardsTitle):
 			g.forw.refresh()
 		case g.tr.T(i18n.NavSettings):
@@ -245,102 +281,6 @@ func (g *App) askText(title, message, initial string, secret bool, done func(str
 	})
 }
 
-// connect dials a host in the background and opens its terminal on success.
-func (g *App) connect(h model.Host) {
-	g.setStatus(fmt.Sprintf("%s %s…", g.tr.T(i18n.TerminalStatusConnecting), h.Name))
-	go func() {
-		client, err := g.rt.Connect(g.ctx, h)
-		fyne.Do(func() {
-			if err != nil {
-				g.setStatus(err.Error())
-				g.showError(friendlyError(g.tr, err))
-				return
-			}
-			g.startTerminal(h, client)
-		})
-	}()
-}
-
-// startTerminal opens a PTY session for an established client.
-func (g *App) startTerminal(h model.Host, client *sshclient.Client) {
-	if g.termCancel != nil {
-		g.termCancel()
-		g.termCancel = nil
-	}
-	if g.shell != nil {
-		_ = g.shell.Close()
-		g.shell = nil
-	}
-
-	ctx, cancel := context.WithCancel(g.ctx)
-	g.termCancel = cancel
-
-	view := NewTerminalView(float32(g.rt.Store.Settings.Terminal.FontSize))
-	shell, err := client.StartShell(ctx, sshclient.ShellOptions{
-		Cols:         80,
-		Rows:         24,
-		AgentForward: h.ForwardAgent,
-	})
-	if err != nil {
-		cancel()
-		g.showError(err)
-		return
-	}
-	g.shell = shell
-	g.termView = view
-	g.termHost.SetText(fmt.Sprintf("%s — %s@%s:%d", h.Name, orDefault(h.User, "root"), h.Hostname, h.Port))
-	view.OnInput = func(p []byte) {
-		go func() { _, _ = shell.Write(p) }()
-	}
-	view.OnResize = func(cols, rows int) { _ = shell.Resize(cols, rows) }
-	g.termBody.Objects = []fyne.CanvasObject{view}
-	g.termBody.Refresh()
-	g.selectTab(g.tr.T(i18n.NavTerminal))
-	g.win.Canvas().Focus(view)
-
-	sudo := termutil.NewThrottle(5 * time.Second)
-	go func() {
-		buf := make([]byte, 16384)
-		for {
-			n, err := shell.Read(buf)
-			if n > 0 {
-				data := append([]byte(nil), buf[:n]...)
-				if g.rt.Store.Settings.Terminal.SudoAutofill && termutil.SudoPrompt(data) && sudo.Allow() {
-					if pw, ok := g.rt.Store.Password(h); ok && pw != "" {
-						go func() { _, _ = shell.Write([]byte(pw + "\n")) }()
-					}
-				}
-				fyne.Do(func() { view.Write(data) })
-			}
-			if err != nil {
-				fyne.Do(func() {
-					view.SetClosed()
-					g.setStatus(fmt.Sprintf("%s: %s", h.Name, g.tr.T(i18n.TerminalStatusDisconnected)))
-				})
-				return
-			}
-		}
-	}()
-}
-
-// closeTerminal ends the current session and returns to the placeholder.
-func (g *App) closeTerminal() {
-	if g.termCancel != nil {
-		g.termCancel()
-		g.termCancel = nil
-	}
-	if g.shell != nil {
-		_ = g.shell.Close()
-		g.shell = nil
-	}
-	placeholder := widget.NewLabel(g.tr.T(i18n.TerminalStatusDisconnected))
-	placeholder.Alignment = fyne.TextAlignCenter
-	g.termBody.Objects = []fyne.CanvasObject{placeholder}
-	g.termBody.Refresh()
-	g.termHost.SetText(g.tr.T(i18n.TerminalStatusDisconnected))
-	g.termView = nil
-}
-
 func (g *App) selectTab(title string) {
 	for i, item := range g.tabs.Items {
 		if item.Text == title {
@@ -360,7 +300,7 @@ func (g *App) notify(kind model.NotificationKind, text string) {
 	go func() {
 		time.Sleep(timeout)
 		fyne.Do(func() {
-			if g.status.Text == text {
+			if g.status != nil && g.status.Text == text {
 				g.setStatus("")
 			}
 		})
