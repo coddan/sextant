@@ -132,13 +132,18 @@ download_binary() {
         return 1
     fi
     verify_checksum "$_archive"
+    _extract="$TMP_DIR/extract"
+    rm -rf "$_extract"
+    mkdir -p "$_extract"
     if [ "$ARCHIVE_EXT" = "zip" ]; then
-        unzip -q "$TMP_DIR/$_archive" -d "$TMP_DIR"
+        unzip -q "$TMP_DIR/$_archive" -d "$_extract"
     else
-        tar -xzf "$TMP_DIR/$_archive" -C "$TMP_DIR"
+        tar -xzf "$TMP_DIR/$_archive" -C "$_extract"
     fi
-    _found="$(find "$TMP_DIR" -name "${_name}${EXT}" -type f | head -n 1)"
+    _found="$(find "$_extract" -name "${_name}${EXT}" -type f | head -n 1)"
     [ -n "$_found" ] || { print_error "Binary $_name not found in archive"; return 1; }
+    # Archives normally contain the binary at their root. Move it out of the
+    # extraction directory rather than onto itself, which `mv` rejects.
     mv "$_found" "$TMP_DIR/$_name$EXT"
 }
 
