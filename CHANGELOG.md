@@ -33,6 +33,9 @@ All notable changes to Sextant are documented here. The format follows
   and the other sections were silently discarded. The markers are now quoted.
 - **Windows GUI no longer opens a `cmd` window.** The desktop binary is linked
   with `-H=windowsgui`, so closing a console window cannot terminate the app.
+- **Installer no longer aborts with `mv: ... are the same file`.** Release
+  archives contain the binary at their root, so extraction now happens in a
+  subdirectory before the binary is moved into the temporary install location.
 - Terminal sessions survive a theme or language change instead of being
   disconnected when the interface is rebuilt.
 
