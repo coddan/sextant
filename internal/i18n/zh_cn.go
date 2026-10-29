@@ -13,6 +13,9 @@ var zhCN = map[Key]string{
 	NavSettings:  "设置",
 	NavAbout:     "关于",
 
+	SidebarSessions:    "会话",
+	SidebarNewTerminal: "新建终端",
+
 	CommonSave:     "保存",
 	CommonCancel:   "取消",
 	CommonDelete:   "删除",
@@ -78,8 +81,9 @@ var zhCN = map[Key]string{
 	TerminalStatusConnected:    "已连接",
 	TerminalStatusDisconnected: "已断开",
 	TerminalStatusConnecting:   "连接中…",
-	TerminalNoSessions:         "没有打开的终端。\n请在“主机”标签页中启动一个。",
+	TerminalNoSessions:         "没有打开的终端。\n请使用“会话”中的 +，或从仪表盘打开主机。",
 	TerminalCloseConfirm:       "关闭到 %s 的终端会话？",
+	TerminalPickHost:           "选择要连接终端的主机",
 
 	SFTPTitle:           "SFTP",
 	SFTPRemotePath:      "远程路径",
@@ -90,6 +94,7 @@ var zhCN = map[Key]string{
 	SFTPDeleteConfirm:   "删除 %q？",
 	SFTPDisconnect:      "断开 SFTP",
 	SFTPEdit:            "编辑",
+	SFTPPickHost:        "选择要通过 SFTP 连接的主机",
 	SFTPTransferring:    "正在传输 %s",
 	SFTPTransferDone:    "已传输 %s",
 	SFTPUploadFile:      "上传文件",

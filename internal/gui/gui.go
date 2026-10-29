@@ -11,7 +11,6 @@ import (
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
-	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
 	sextant "github.com/coddan/sextant/internal/app"
@@ -31,8 +30,17 @@ type App struct {
 	win fyne.Window
 	tr  *i18n.Translator
 
-	tabs   *container.AppTabs
 	status *widget.Label
+
+	sidebar     fyne.CanvasObject
+	navButtons  map[screenID]*widget.Button
+	sessionRows *fyne.Container
+	content     *fyne.Container
+	views       map[screenID]fyne.CanvasObject
+	screen      screenID
+	sessions    []*terminalSession
+	active      *terminalSession
+	termStack   *fyne.Container
 
 	hostsBox     *fyne.Container
 	hostsWrap    *fyne.Container
@@ -44,20 +52,16 @@ type App struct {
 	metricsRun   bool
 	metricsOff   context.CancelFunc
 
-	termTab   *container.TabItem
-	termTabs  *container.AppTabs
-	termEmpty *container.TabItem
-	sessions  []*terminalSession
-	connMu    sync.Mutex
-	connects  map[string]*sync.Mutex
-	sftp      *sftpView
-	snip      *snippetView
-	sett      *settingsView
-	forw      *forwardsView
-	keys      *keySetupView
-	hosts     []model.Host
-	ctx       context.Context
-	cancel    context.CancelFunc
+	connMu   sync.Mutex
+	connects map[string]*sync.Mutex
+	sftp     *sftpView
+	snip     *snippetView
+	sett     *settingsView
+	forw     *forwardsView
+	keys     *keySetupView
+	hosts    []model.Host
+	ctx      context.Context
+	cancel   context.CancelFunc
 }
 
 // Run opens the desktop window and blocks until it closes.
@@ -92,81 +96,46 @@ func Run(rt *sextant.Runtime) error {
 	return nil
 }
 
-// buildTerminalTab creates the terminal workspace. Each SSH session gets its
-// own tab inside it, so several live terminals can be kept open at once.
-func (g *App) buildTerminalTab() *container.TabItem {
-	selected := 0
-	if g.termTabs != nil {
-		selected = g.termTabs.SelectedIndex()
-	}
-	g.termTabs = container.NewAppTabs()
-	g.termTabs.SetTabLocation(container.TabLocationTop)
-	g.termEmpty = nil
-	g.termTabs.OnSelected = func(item *container.TabItem) {
-		for _, s := range g.sessions {
-			if s.tab == item {
-				g.win.Canvas().Focus(s.view)
-				state := g.tr.T(i18n.TerminalStatusConnected)
-				if s.closed {
-					state = g.tr.T(i18n.TerminalStatusDisconnected)
-				}
-				g.setStatus(fmt.Sprintf("%s: %s", s.host.Name, state))
-				return
-			}
-		}
-	}
-	for _, s := range g.sessions {
-		icon := theme.ComputerIcon()
-		if s.closed {
-			icon = theme.WarningIcon()
-		}
-		s.tab = container.NewTabItemWithIcon(s.title, icon, s.buildContent())
-		g.termTabs.Append(s.tab)
-	}
-	if len(g.sessions) == 0 {
-		g.showTerminalPlaceholder()
-	} else {
-		g.termTabs.SelectIndex(clampInt(selected, 0, len(g.sessions)-1))
-	}
-	return container.NewTabItemWithIcon(g.tr.T(i18n.NavTerminal), theme.ComputerIcon(), g.termTabs)
-}
-
-// buildUI creates the tab layout. It is called again after a language change so
-// every label picks up the new translation.
+// buildUI creates the persistent left navigation and the active screen. It is
+// called again after a language change so every label picks up the new
+// translation. Open terminal sessions keep their live views.
 func (g *App) buildUI() fyne.CanvasObject {
+	screen := g.screen
+	if screen == "" {
+		screen = screenDashboard
+	}
 	g.status = widget.NewLabel("")
 	g.status.Truncation = fyne.TextTruncateEllipsis
-	g.termTab = g.buildTerminalTab()
-	g.tabs = container.NewAppTabs(
-		container.NewTabItemWithIcon(g.tr.T(i18n.NavHosts), theme.HomeIcon(), g.buildHostsTab()),
-		g.termTab,
-		container.NewTabItemWithIcon(g.tr.T(i18n.NavSFTP), theme.FolderIcon(), g.buildSFTPTab()),
-		container.NewTabItemWithIcon(g.tr.T(i18n.SnippetsTitle), theme.MediaPlayIcon(), g.buildSnippetsTab()),
-		container.NewTabItemWithIcon(g.tr.T(i18n.ForwardsTitle), theme.MailSendIcon(), g.buildForwardsTab()),
-		container.NewTabItemWithIcon(g.tr.T(i18n.KeySetupTitle), theme.LoginIcon(), g.buildKeySetupTab()),
-		container.NewTabItemWithIcon(g.tr.T(i18n.NavSettings), theme.SettingsIcon(), g.buildSettingsTab()),
-	)
-	g.tabs.OnSelected = func(item *container.TabItem) {
-		switch item.Text {
-		case g.tr.T(i18n.NavTerminal):
-			g.focusSelectedSession()
-		case g.tr.T(i18n.ForwardsTitle):
-			g.forw.refresh()
-		case g.tr.T(i18n.NavSettings):
-			g.sett.refresh()
-		case g.tr.T(i18n.SnippetsTitle):
-			g.snip.refresh()
-		}
+
+	// Session headers contain translated labels, so refresh them while their
+	// terminal views stay untouched.
+	for _, s := range g.sessions {
+		s.content = s.buildContent()
 	}
-	bottom := container.NewBorder(nil, nil, widget.NewLabel("Sextant"), nil, g.status)
-	return container.NewBorder(nil, bottom, nil, nil, g.tabs)
+
+	g.views = map[screenID]fyne.CanvasObject{
+		screenDashboard: g.buildHostsTab(),
+		screenTerminal:  g.buildTerminalWorkspace(),
+		screenSFTP:      g.buildSFTPTab(),
+		screenSnippets:  g.buildSnippetsTab(),
+		screenForwards:  g.buildForwardsTab(),
+		screenKeys:      g.buildKeySetupTab(),
+		screenSettings:  g.buildSettingsTab(),
+	}
+	g.content = container.NewStack()
+	g.screen = screen
+	g.sidebar = g.buildSidebar()
+	g.showScreen(screen)
+
+	statusRow := container.NewBorder(nil, nil, widget.NewLabel(g.tr.T(i18n.AppName)), nil, g.status)
+	bottom := container.NewVBox(widget.NewSeparator(), container.NewPadded(statusRow))
+	return container.NewBorder(nil, bottom, g.sidebar, nil, g.content)
 }
 
-// rebuildUI swaps in a freshly translated interface, preserving the selection.
+// rebuildUI swaps in a freshly translated interface, preserving the active
+// screen and every open terminal.
 func (g *App) rebuildUI() {
-	idx := g.tabs.SelectedIndex()
 	g.win.SetContent(g.buildUI())
-	g.tabs.SelectIndex(idx)
 }
 
 func (g *App) setStatus(text string) {
@@ -279,15 +248,6 @@ func (g *App) askText(title, message, initial string, secret bool, done func(str
 		w := g.win.Canvas()
 		fyne.Do(func() { w.Focus(entry) })
 	})
-}
-
-func (g *App) selectTab(title string) {
-	for i, item := range g.tabs.Items {
-		if item.Text == title {
-			g.tabs.SelectIndex(i)
-			return
-		}
-	}
 }
 
 // notify shows a status message that expires according to settings.

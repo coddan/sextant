@@ -55,14 +55,14 @@ func (g *App) buildSFTPTab() fyne.CanvasObject {
 
 // openSFTP connects (or reuses a connection) and opens the browser.
 func (g *App) openSFTP(h model.Host) {
-	g.selectTab(g.tr.T(i18n.NavSFTP))
+	g.showScreen(screenSFTP)
 	g.sftp.host = h
 	g.sftp.listBox.Objects = nil
 	g.sftp.listBox.Refresh()
 	g.sftp.pathLabel.SetText("…")
 	g.notify(model.NotifyInfo, fmt.Sprintf("%s %s…", g.tr.T(i18n.MetricsCollecting), h.Name))
 	go func() {
-		client, err := g.rt.Connect(g.ctx, h)
+		client, err := g.connectedClient(g.ctx, h)
 		if err == nil {
 			var sftp *sshclient.SFTP
 			sftp, err = client.OpenSFTP()

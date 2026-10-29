@@ -21,15 +21,15 @@ import (
 // terminalSession is one SSH PTY session. Each session owns its view, shell and
 // tab, so closing or losing one connection leaves the others running.
 type terminalSession struct {
-	app    *App
-	host   model.Host
-	title  string
-	shell  *sshclient.Shell
-	cancel context.CancelFunc
-	view   *TerminalView
-	tab    *container.TabItem
-	status *widget.Label
-	sudo   *termutil.Throttle
+	app     *App
+	host    model.Host
+	title   string
+	shell   *sshclient.Shell
+	cancel  context.CancelFunc
+	view    *TerminalView
+	content fyne.CanvasObject
+	status  *widget.Label
+	sudo    *termutil.Throttle
 
 	// writeQ serialises keystrokes onto one goroutine. Spawning a goroutine per
 	// key event can reorder fast input; a single writer preserves typeahead.
@@ -99,7 +99,7 @@ func (g *App) connectedClient(ctx context.Context, h model.Host) (*sshclient.Cli
 
 // openSession adds a ready shell to the terminal workspace.
 func (g *App) openSession(h model.Host, shell *sshclient.Shell, cancel context.CancelFunc) {
-	if g.termTabs == nil {
+	if g.content == nil {
 		cancel()
 		_ = shell.Close()
 		return
@@ -129,15 +129,17 @@ func (g *App) openSession(h model.Host, shell *sshclient.Shell, cancel context.C
 	}
 	view.OnResize = func(cols, rows int) { _ = shell.Resize(cols, rows) }
 	go s.writeLoop(shell)
+	s.content = s.buildContent()
 
 	// A successful connection also means background metrics can use the live
 	// client, even if the host previously needed an interactive login.
 	delete(g.metricsRetry, h.ID)
 	g.sessions = append(g.sessions, s)
-	g.addSessionTab(s)
-	g.selectTab(g.tr.T(i18n.NavTerminal))
-	g.termTabs.Select(s.tab)
-	g.win.Canvas().Focus(view)
+	g.active = s
+	g.showScreen(screenTerminal)
+	if g.win != nil {
+		g.win.Canvas().Focus(view)
+	}
 	g.notify(model.NotifySuccess, fmt.Sprintf(g.tr.T(i18n.NotifyConnected), h.Name))
 
 	go g.readSession(s)
@@ -178,7 +180,7 @@ func (s *terminalSession) buildContent() fyne.CanvasObject {
 	s.status.Importance = importance
 
 	host := widget.NewLabelWithStyle(
-		fmt.Sprintf("%s — %s@%s:%d", s.host.Name, orDefault(s.host.User, "root"), s.host.Hostname, s.host.Port),
+		fmt.Sprintf("%s — %s@%s:%d", s.title, orDefault(s.host.User, "root"), s.host.Hostname, s.host.Port),
 		fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
 	)
 	host.Truncation = fyne.TextTruncateEllipsis
@@ -189,39 +191,6 @@ func (s *terminalSession) buildContent() fyne.CanvasObject {
 
 	bar := container.NewBorder(nil, nil, nil, container.NewHBox(s.status, closeBtn), host)
 	return container.NewBorder(bar, nil, nil, nil, s.view)
-}
-
-// addSessionTab appends a tab for a new session, replacing the empty-state tab.
-func (g *App) addSessionTab(s *terminalSession) {
-	if g.termTabs == nil {
-		return
-	}
-	if g.termEmpty != nil {
-		g.termTabs.Remove(g.termEmpty)
-		g.termEmpty = nil
-	}
-	s.tab = container.NewTabItemWithIcon(s.title, theme.ComputerIcon(), s.buildContent())
-	g.termTabs.Append(s.tab)
-}
-
-// showTerminalPlaceholder fills the workspace when no session is open.
-func (g *App) showTerminalPlaceholder() {
-	if g.termTabs == nil {
-		return
-	}
-	if g.termEmpty != nil {
-		g.termTabs.Remove(g.termEmpty)
-		g.termEmpty = nil
-	}
-	hint := widget.NewLabel(g.tr.T(i18n.TerminalNoSessions))
-	hint.Alignment = fyne.TextAlignCenter
-	g.termEmpty = container.NewTabItemWithIcon(
-		g.tr.T(i18n.NavTerminal),
-		theme.ComputerIcon(),
-		container.NewCenter(hint),
-	)
-	g.termTabs.Append(g.termEmpty)
-	g.termTabs.Select(g.termEmpty)
 }
 
 // readSession streams remote output until the shell ends.
@@ -260,15 +229,13 @@ func (g *App) markSessionClosed(s *terminalSession) {
 	s.shell = nil
 	s.stopWriter()
 	s.view.SetClosed()
-	if s.tab != nil {
-		s.tab.Icon = theme.WarningIcon()
-		if g.termTabs != nil {
-			g.termTabs.Refresh()
-		}
-	}
 	if s.status != nil {
 		s.status.SetText(g.tr.T(i18n.TerminalStatusDisconnected))
 		s.status.Importance = widget.WarningImportance
+	}
+	g.refreshSidebar()
+	if g.active == s {
+		g.setStatus(fmt.Sprintf("%s: %s", s.host.Name, g.tr.T(i18n.TerminalStatusDisconnected)))
 	}
 	g.notify(model.NotifyWarning, fmt.Sprintf(g.tr.T(i18n.NotifyDisconnected), s.host.Name))
 }
@@ -297,12 +264,16 @@ func (g *App) closeSession(s *terminalSession) {
 	g.endSession(s)
 }
 
-// endSession tears down a session and removes its tab.
+// endSession tears down a session and removes it from the sidebar and
+// workspace. Closing the active terminal falls through to the next one instead
+// of leaving an empty pane.
 func (g *App) endSession(s *terminalSession) {
 	if s == nil {
 		return
 	}
 	wasClosed := s.closed
+	idx := g.sessionIndex(s)
+	wasActive := g.active == s
 	s.closed = true
 	if s.cancel != nil {
 		s.cancel()
@@ -313,28 +284,43 @@ func (g *App) endSession(s *terminalSession) {
 		s.shell = nil
 	}
 	s.stopWriter()
-	g.removeSessionTab(s)
+	g.removeSession(s)
 	if !wasClosed {
 		g.setStatus(fmt.Sprintf("%s: %s", s.host.Name, g.tr.T(i18n.TerminalStatusDisconnected)))
 	}
+	if wasActive && g.screen == screenTerminal {
+		if len(g.sessions) > 0 {
+			g.activateSession(g.sessions[clampInt(idx, 0, len(g.sessions)-1)])
+		} else {
+			g.active = nil
+			g.showScreen(screenDashboard)
+		}
+	}
 }
 
-// removeSessionTab drops a session from the workspace, showing the empty state
-// when the last one goes away.
-func (g *App) removeSessionTab(s *terminalSession) {
+func (g *App) removeSession(s *terminalSession) {
 	for i, open := range g.sessions {
 		if open == s {
 			g.sessions = append(g.sessions[:i], g.sessions[i+1:]...)
 			break
 		}
 	}
-	if s.tab != nil && g.termTabs != nil {
-		g.termTabs.Remove(s.tab)
-		s.tab = nil
+	if g.active == s {
+		g.active = nil
 	}
-	if len(g.sessions) == 0 {
-		g.showTerminalPlaceholder()
+	g.refreshSidebar()
+	if g.screen == screenTerminal {
+		g.showActiveSession()
 	}
+}
+
+func (g *App) sessionIndex(s *terminalSession) int {
+	for i, open := range g.sessions {
+		if open == s {
+			return i
+		}
+	}
+	return -1
 }
 
 // closeAllSessions shuts down every shell without prompting, for application
@@ -353,6 +339,7 @@ func (g *App) closeAllSessions() {
 		s.stopWriter()
 	}
 	g.sessions = nil
+	g.active = nil
 }
 
 // uniqueSessionTitle avoids identical tab names when the same host is opened
@@ -378,18 +365,4 @@ func (g *App) sessionTitleTaken(title string) bool {
 		}
 	}
 	return false
-}
-
-// focusSelectedSession gives keyboard input back to the visible terminal.
-func (g *App) focusSelectedSession() {
-	if g.termTabs == nil {
-		return
-	}
-	item := g.termTabs.Selected()
-	for _, s := range g.sessions {
-		if s.tab == item {
-			g.win.Canvas().Focus(s.view)
-			return
-		}
-	}
 }

@@ -18,6 +18,9 @@ var en = map[Key]string{
 	NavSettings:  "Settings",
 	NavAbout:     "About",
 
+	SidebarSessions:    "Sessions",
+	SidebarNewTerminal: "New terminal",
+
 	CommonSave:     "Save",
 	CommonCancel:   "Cancel",
 	CommonDelete:   "Delete",
@@ -83,8 +86,9 @@ var en = map[Key]string{
 	TerminalStatusConnected:    "Connected",
 	TerminalStatusDisconnected: "Disconnected",
 	TerminalStatusConnecting:   "Connecting…",
-	TerminalNoSessions:         "No terminals open.\nStart one from the Hosts tab.",
+	TerminalNoSessions:         "No terminals open.\nUse + in Sessions or open a host from Dashboard.",
 	TerminalCloseConfirm:       "Close the terminal session to %s?",
+	TerminalPickHost:           "Choose a host for the new terminal",
 
 	SFTPTitle:           "SFTP",
 	SFTPRemotePath:      "Remote path",
@@ -95,6 +99,7 @@ var en = map[Key]string{
 	SFTPDeleteConfirm:   "Delete %q?",
 	SFTPDisconnect:      "Disconnect SFTP",
 	SFTPEdit:            "Edit",
+	SFTPPickHost:        "Choose a host for SFTP",
 	SFTPTransferring:    "Transferring %s",
 	SFTPTransferDone:    "Transferred %s",
 	SFTPUploadFile:      "Upload file",

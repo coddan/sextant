@@ -16,6 +16,9 @@ const (
 	NavSettings  Key = "nav.settings"
 	NavAbout     Key = "nav.about"
 
+	SidebarSessions    Key = "sidebar.sessions"
+	SidebarNewTerminal Key = "sidebar.new_terminal"
+
 	// Common actions and words.
 	CommonSave     Key = "common.save"
 	CommonCancel   Key = "common.cancel"
@@ -87,6 +90,7 @@ const (
 	TerminalStatusConnecting   Key = "terminal.status_connecting"
 	TerminalNoSessions         Key = "terminal.no_sessions"
 	TerminalCloseConfirm       Key = "terminal.close_confirm"
+	TerminalPickHost           Key = "terminal.pick_host"
 
 	// SFTP.
 	SFTPTitle           Key = "sftp.title"
@@ -98,6 +102,7 @@ const (
 	SFTPDeleteConfirm   Key = "sftp.delete_confirm"
 	SFTPDisconnect      Key = "sftp.disconnect"
 	SFTPEdit            Key = "sftp.edit"
+	SFTPPickHost        Key = "sftp.pick_host"
 	SFTPTransferring    Key = "sftp.transferring"
 	SFTPTransferDone    Key = "sftp.transfer_done"
 	SFTPUploadFile      Key = "sftp.upload_file"

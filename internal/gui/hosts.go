@@ -46,6 +46,7 @@ func (g *App) buildHostsTab() fyne.CanvasObject {
 	newBtn := widget.NewButtonWithIcon(g.tr.T(i18n.DashboardAddHost), theme.ContentAddIcon(), func() {
 		g.editHost(model.NewHost("", ""))
 	})
+	newBtn.Importance = widget.HighImportance
 	refreshBtn := widget.NewButtonWithIcon(g.tr.T(i18n.CommonRefresh), theme.ViewRefreshIcon(), func() {
 		g.refreshAll()
 	})
@@ -61,7 +62,19 @@ func (g *App) buildHostsTab() fyne.CanvasObject {
 			g.refreshAllMetrics(false)
 		}
 	})
-	bar := container.NewBorder(nil, nil, container.NewHBox(newBtn, refreshBtn, sshBtn, puttyBtn, g.onlyOnline), nil, filter)
+
+	title := canvas.NewText(g.tr.T(i18n.NavDashboard), theme.Color(theme.ColorNameForeground))
+	title.TextSize = 24
+	title.TextStyle = fyne.TextStyle{Bold: true}
+	search := container.NewGridWrap(fyne.NewSize(240, 38), filter)
+	header := container.NewBorder(nil, nil, title, container.NewHBox(search, refreshBtn, newBtn))
+	imports := container.NewHBox(sshBtn, puttyBtn, g.onlyOnline)
+	top := container.NewVBox(
+		container.NewPadded(header),
+		container.NewPadded(imports),
+		widget.NewSeparator(),
+	)
+
 	g.hostsBox = container.NewAdaptiveGrid(2)
 	// Wrap the grid in a VBox so a short list keeps its natural card height
 	// instead of stretching the rows to fill the scroll viewport.
@@ -69,7 +82,7 @@ func (g *App) buildHostsTab() fyne.CanvasObject {
 	scroll := container.NewVScroll(g.hostsWrap)
 
 	g.refreshHosts()
-	return container.NewBorder(container.NewVBox(bar, widget.NewSeparator()), nil, nil, nil, scroll)
+	return container.NewBorder(top, nil, nil, nil, scroll)
 }
 
 // refreshAll probes reachability and refreshes metrics for the whole list. This

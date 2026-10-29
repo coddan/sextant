@@ -51,7 +51,7 @@ CGO_LDFLAGS="-L$HOME/.local/lib" go build ./cmd/sextant-gui
 
 ## Dashboard metrics
 
-The **Hosts** tab is a responsive card grid with one card per host showing
+The **Dashboard** is a responsive card grid with one card per host showing
 reachability, CPU, memory and disk bars, plus OS, uptime and load when a sample
 is available. Background collection runs on the refresh interval from
 **Settings → General** and uses stored passwords, stored key passphrases and the
@@ -66,12 +66,22 @@ interactive-auth failure, background retries back off for ten minutes; the
 **Metrics** button always tries immediately. Hosts configured for TCP monitoring
 show reachability only.
 
-## Multiple terminals
+## Workspace and multiple terminals
 
-Every connection opened from the dashboard gets its own tab under **Terminal**.
-Sessions stay alive when you switch back to the dashboard or open another host,
-and each tab has its own **Close** button. Ending one session leaves the others
-running.
+The desktop window follows the OmnySSH/SecureCRT layout: a fixed navigation rail
+on the left and one content pane on the right. The rail contains Dashboard,
+Snippets, SFTP, Terminal, Forwards, Key Setup and Settings, followed by a live
+**Sessions** list.
+
+Every connection opened from a host card or from **Sessions → +** gets a row in
+that list, with a status dot, its host name and a **Close** button. Selecting a
+row shows that terminal in the content pane; the active row is highlighted.
+Only one terminal is visible at a time, but every session keeps its shell,
+scrollback and full-screen program running while you switch to the dashboard or
+to another terminal.
+
+Closing a session tears down only that shell. If it was the active one, the next
+session becomes active; closing the last session returns to the Dashboard.
 
 ## Windows
 

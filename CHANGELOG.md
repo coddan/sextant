@@ -8,9 +8,12 @@ All notable changes to Sextant are documented here. The format follows
 
 ### Added
 
-- **Multiple desktop terminals.** Every host opened from the dashboard gets its
-  own terminal tab. Sessions keep running while you switch to the dashboard,
-  open another host, or use another tab, and each one closes independently.
+- **Multi-terminal workspace with a left rail.** The desktop window now follows
+  the OmnySSH/SecureCRT layout: persistent navigation on the left, a live
+  **Sessions** list, and one active screen on the right. Every host opened from
+  a card or **Sessions → +** gets its own highlighted row and independent close
+  button. Sessions keep their shell, scrollback and running programs while you
+  switch screens or terminals, and closing one never touches the others.
 - **Card dashboard with automatic metrics.** The desktop host list is now a
   responsive card grid showing reachability, CPU/RAM/disk severity bars, OS,
   uptime and load. Metrics and reachability refresh in the background on the
