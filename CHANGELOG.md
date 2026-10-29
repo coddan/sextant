@@ -20,6 +20,11 @@ All notable changes to Sextant are documented here. The format follows
   configured interval using stored credentials and the SSH agent; hosts that
   need an interactive login or a new host key are marked *Limited* and can be
   refreshed individually.
+- **Complete dark and light themes.** **Settings → Theme** offers Default
+  (follow the desktop), Dark and Light. The choice covers the navigation rail,
+  cards, dialogs and terminals, and changes immediately without reconnecting.
+  Light mode uses a darker ANSI palette so coloured shell output stays readable
+  on a white terminal, including 256-colour output.
 
 ### Fixed
 

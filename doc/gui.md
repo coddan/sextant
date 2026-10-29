@@ -83,6 +83,15 @@ to another terminal.
 Closing a session tears down only that shell. If it was the active one, the next
 session becomes active; closing the last session returns to the Dashboard.
 
+## Themes
+
+**Settings → Theme** offers **Default** (follow the desktop), **Dark** and
+**Light**. Applying a theme updates the navigation rail, dashboard cards,
+dialogs and every open terminal immediately; sessions keep their shells and
+scrollback. The terminal palette is derived from the theme background, so ANSI
+white and pastel 256-colour output are darkened in Light mode instead of
+disappearing into the canvas.
+
 ## Windows
 
 Build with the GUI subsystem to avoid a console window:

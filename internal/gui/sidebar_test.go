@@ -3,6 +3,7 @@ package gui
 import (
 	"testing"
 
+	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/test"
 	"fyne.io/fyne/v2/widget"
@@ -56,6 +57,25 @@ func TestNavHighlightFollowsScreenAndSession(t *testing.T) {
 	g.refreshNav()
 	if g.navButtons[screenTerminal].Importance != widget.HighImportance {
 		t.Fatal("terminal selector should be highlighted on the empty workspace")
+	}
+}
+
+func TestSidebarSettingsButtonSwitchesScreen(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	g := &App{
+		tr:      i18n.New("en"),
+		content: container.NewStack(),
+		views: map[screenID]fyne.CanvasObject{
+			screenDashboard: widget.NewLabel("dashboard"),
+			screenSettings:  widget.NewLabel("settings"),
+		},
+	}
+	_ = g.buildSidebar()
+	test.Tap(g.navButtons[screenSettings])
+	if g.screen != screenSettings {
+		t.Fatalf("screen = %q, want %q", g.screen, screenSettings)
 	}
 }
 

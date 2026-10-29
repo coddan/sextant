@@ -224,14 +224,18 @@ func (t *TerminalView) CreateRenderer() fyne.WidgetRenderer {
 		txt.Hide()
 		r.runs = append(r.runs, txt)
 	}
+	r.cursor.FillColor = terminalCursorColor()
+	r.cursor.Hide()
+	return r
+}
+
+func terminalCursorColor() color.Color {
 	cursorCol := theme.Color(theme.ColorNamePrimary)
 	if c, ok := cursorCol.(color.NRGBA); ok {
 		c.A = 160
-		cursorCol = c
+		return c
 	}
-	r.cursor.FillColor = cursorCol
-	r.cursor.Hide()
-	return r
+	return cursorCol
 }
 
 type termRun struct {
@@ -332,6 +336,8 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	r.cols, r.rows = cols, rows
 	fgDefault := theme.Color(theme.ColorNameForeground)
 	bgDefault := theme.Color(theme.ColorNameBackground)
+	r.bg.FillColor = bgDefault
+	r.cursor.FillColor = terminalCursorColor()
 
 	idx := 0
 	for y := 0; y < rows; y++ {
@@ -426,8 +432,9 @@ func buildRuns(line vterm.Line, cols, cursorX int, fgDefault, bgDefault color.Co
 // background is folded into the text colour when the widget cannot paint a
 // per-run background, so reverse video is still readable.
 func cellColors(c vterm.Cell, fgDefault, bgDefault color.Color) (color.Color, color.Color) {
-	fg, fgSet := resolveColor(c.Fg)
-	bg, bgSet := resolveColor(c.Bg)
+	light := isLightBackground(bgDefault)
+	fg, fgSet := resolveColor(c.Fg, light)
+	bg, bgSet := resolveColor(c.Bg, light)
 	if !fgSet {
 		fg = fgDefault
 	}
@@ -443,10 +450,10 @@ func cellColors(c vterm.Cell, fgDefault, bgDefault color.Color) (color.Color, co
 	return fg, bg
 }
 
-func resolveColor(c vterm.Color) (color.Color, bool) {
+func resolveColor(c vterm.Color, light bool) (color.Color, bool) {
 	switch c.Mode {
 	case vterm.ColorANSI:
-		return ansiPalette(c.Index), true
+		return ansiPalette(c.Index, light), true
 	case vterm.ColorRGB:
 		return color.NRGBA{R: c.R, G: c.G, B: c.B, A: 255}, true
 	default:
@@ -454,8 +461,58 @@ func resolveColor(c vterm.Color) (color.Color, bool) {
 	}
 }
 
-// ansiPalette is the standard xterm 256-colour palette.
-func ansiPalette(i uint8) color.Color {
+func isLightBackground(c color.Color) bool {
+	r, g, b, _ := c.RGBA()
+	return (299*uint64(r)+587*uint64(g)+114*uint64(b))/1000 > 0x8000
+}
+
+// ansiPalette returns the xterm 256-colour palette adapted to the terminal
+// background. The dark palette is the usual xterm set. On light themes the
+// first sixteen colours are darkened and washed-out cube colours are clamped,
+// otherwise ANSI white and pastel output disappears into the white canvas.
+func ansiPalette(i uint8, light bool) color.Color {
+	if light {
+		switch i {
+		case 0:
+			return color.NRGBA{0x20, 0x21, 0x24, 0xff}
+		case 1:
+			return color.NRGBA{0xb3, 0x26, 0x1e, 0xff}
+		case 2:
+			return color.NRGBA{0x2e, 0x7d, 0x32, 0xff}
+		case 3:
+			return color.NRGBA{0x8a, 0x61, 0x00, 0xff}
+		case 4:
+			return color.NRGBA{0x15, 0x65, 0xc0, 0xff}
+		case 5:
+			return color.NRGBA{0x7b, 0x1f, 0xa2, 0xff}
+		case 6:
+			return color.NRGBA{0x00, 0x79, 0x6b, 0xff}
+		case 7:
+			return color.NRGBA{0x3c, 0x40, 0x43, 0xff}
+		case 8:
+			return color.NRGBA{0x5f, 0x63, 0x68, 0xff}
+		case 9:
+			return color.NRGBA{0xc5, 0x22, 0x1f, 0xff}
+		case 10:
+			return color.NRGBA{0x2e, 0x7d, 0x32, 0xff}
+		case 11:
+			return color.NRGBA{0x7a, 0x5a, 0x00, 0xff}
+		case 12:
+			return color.NRGBA{0x19, 0x67, 0xd2, 0xff}
+		case 13:
+			return color.NRGBA{0x8e, 0x24, 0xaa, 0xff}
+		case 14:
+			return color.NRGBA{0x00, 0x79, 0x6b, 0xff}
+		case 15:
+			return color.NRGBA{0x20, 0x21, 0x24, 0xff}
+		}
+		return darkenForLight(standardPalette(i))
+	}
+	return standardPalette(i)
+}
+
+// standardPalette is the usual xterm 256-colour palette for dark terminals.
+func standardPalette(i uint8) color.Color {
 	switch i {
 	case 0:
 		return color.NRGBA{0x1d, 0x1f, 0x21, 0xff}
@@ -498,6 +555,24 @@ func ansiPalette(i uint8) color.Color {
 	n := int(i) - 16
 	levels := []uint8{0, 95, 135, 175, 215, 255}
 	return color.NRGBA{levels[n/36], levels[(n/6)%6], levels[n%6], 0xff}
+}
+
+// darkenForLight keeps palette colours legible on a white background without
+// changing their hue.
+func darkenForLight(c color.Color) color.Color {
+	n := color.NRGBAModel.Convert(c).(color.NRGBA)
+	lum := 0.299*float64(n.R) + 0.587*float64(n.G) + 0.114*float64(n.B)
+	const target = 128.0
+	if lum <= target {
+		return n
+	}
+	scale := target / lum
+	return color.NRGBA{
+		R: uint8(float64(n.R) * scale),
+		G: uint8(float64(n.G) * scale),
+		B: uint8(float64(n.B) * scale),
+		A: n.A,
+	}
 }
 
 func dim(c color.Color) color.Color {
