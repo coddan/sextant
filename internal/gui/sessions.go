@@ -128,14 +128,24 @@ func (g *App) openSession(h model.Host, shell *sshclient.Shell, cancel context.C
 		}
 	}
 	view.OnResize = func(cols, rows int) { _ = shell.Resize(cols, rows) }
+	view.OnFocus = func() { g.focusSplitSession(s) }
 	go s.writeLoop(shell)
 	s.content = s.buildContent()
 
 	// A successful connection also means background metrics can use the live
 	// client, even if the host previously needed an interactive login.
 	delete(g.metricsRetry, h.ID)
+	previous := g.active
 	g.sessions = append(g.sessions, s)
 	g.active = s
+	if g.splitMode != splitNone {
+		if previous != nil && previous != s {
+			g.splitSecondary = previous
+		} else {
+			g.splitSecondary = g.firstOtherSession(s)
+		}
+		g.splitActiveLeading = true
+	}
 	g.showScreen(screenTerminal)
 	if g.win != nil {
 		g.win.Canvas().Focus(view)
@@ -274,6 +284,7 @@ func (g *App) endSession(s *terminalSession) {
 	wasClosed := s.closed
 	idx := g.sessionIndex(s)
 	wasActive := g.active == s
+	next := g.firstOtherSession(s)
 	s.closed = true
 	if s.cancel != nil {
 		s.cancel()
@@ -290,7 +301,10 @@ func (g *App) endSession(s *terminalSession) {
 	}
 	if wasActive && g.screen == screenTerminal {
 		if len(g.sessions) > 0 {
-			g.activateSession(g.sessions[clampInt(idx, 0, len(g.sessions)-1)])
+			if next == nil || g.sessionIndex(next) < 0 {
+				next = g.sessions[clampInt(idx, 0, len(g.sessions)-1)]
+			}
+			g.activateSession(next)
 		} else {
 			g.active = nil
 			g.showScreen(screenDashboard)
@@ -307,6 +321,9 @@ func (g *App) removeSession(s *terminalSession) {
 	}
 	if g.active == s {
 		g.active = nil
+	}
+	if g.splitSecondary == s {
+		g.splitSecondary = nil
 	}
 	g.refreshSidebar()
 	if g.screen == screenTerminal {
@@ -340,6 +357,8 @@ func (g *App) closeAllSessions() {
 	}
 	g.sessions = nil
 	g.active = nil
+	g.splitSecondary = nil
+	g.splitActiveLeading = true
 }
 
 // uniqueSessionTitle avoids identical tab names when the same host is opened

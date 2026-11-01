@@ -64,7 +64,7 @@ func newHostForm(tr *i18n.Translator, title string, host model.Host) *hostForm {
 	f.text(i18n.HostProxyJump, host.ProxyJump, 255)
 	f.text(i18n.HostLocalForwards, strings.Join(host.LocalForwards, ", "), 512)
 	f.text(i18n.HostDynamicForward, host.DynamicForward, 64)
-	f.choice(i18n.HostMonitoring, []string{"ssh", "tcp"}, monitorIndex(host.Monitoring))
+	f.choice(i18n.HostMonitoring, []string{"ssh", "tcp", "off"}, monitorIndex(host.Monitoring))
 	f.toggle(i18n.HostIdentitiesOnly, host.IdentitiesOnly)
 	f.toggle(i18n.HostForwardAgent, host.ForwardAgent)
 	f.toggle(i18n.HostTunnelAutostart, host.TunnelAutostart)
@@ -257,10 +257,14 @@ func indexOf(list []string, value string) int {
 }
 
 func monitorIndex(m model.MonitorMode) int {
-	if m == model.MonitorTCP {
+	switch m {
+	case model.MonitorTCP:
 		return 1
+	case model.MonitorOff:
+		return 2
+	default:
+		return 0
 	}
-	return 0
 }
 
 func orDefault(v, def string) string {

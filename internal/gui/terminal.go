@@ -30,6 +30,7 @@ type TerminalView struct {
 	vt       *vterm.Terminal
 	OnInput  func([]byte)
 	OnResize func(cols, rows int)
+	OnFocus  func()
 
 	mu       sync.Mutex
 	size     fyne.Size
@@ -86,6 +87,9 @@ func (t *TerminalView) Scrolled(ev *fyne.ScrollEvent) {
 
 // Tapped focuses the terminal so it receives key events.
 func (t *TerminalView) Tapped(*fyne.PointEvent) {
+	if t.OnFocus != nil {
+		t.OnFocus()
+	}
 	if c := fyne.CurrentApp().Driver().CanvasForObject(t); c != nil {
 		c.Focus(t)
 	}

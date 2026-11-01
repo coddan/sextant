@@ -28,6 +28,14 @@ const (
 	screenSettings  screenID = "settings"
 )
 
+// Terminal split modes. "vertical" puts the panes side by side (a vertical
+// divider); "horizontal" stacks them above and below each other.
+const (
+	splitNone       = ""
+	splitVertical   = "vertical"
+	splitHorizontal = "horizontal"
+)
+
 // buildSidebar creates the SecureCRT/OmnySSH-style left rail: fixed navigation
 // on top, the live session list in the middle, and settings at the bottom.
 func (g *App) buildSidebar() fyne.CanvasObject {
@@ -163,12 +171,55 @@ func (g *App) openSFTPView() {
 }
 
 // activateSession makes a terminal the visible screen and highlights its row.
+// In a split workspace the clicked session becomes the focused pane and the old
+// focused pane moves to the other side, so clicking is enough to swap panes.
 func (g *App) activateSession(s *terminalSession) {
 	if s == nil {
 		return
 	}
+	if g.splitMode != splitNone && s != g.active {
+		secondary := g.splitSecondarySession()
+		switch {
+		case g.active == nil:
+			g.splitSecondary = g.firstOtherSession(s)
+			g.splitActiveLeading = true
+		case s == secondary:
+			// The pane the user clicked stays on its side; focus moves to it.
+			previous := g.active
+			g.active = s
+			g.splitSecondary = previous
+			g.splitActiveLeading = !g.splitActiveLeading
+		default:
+			// A new third session replaces the focused pane in place.
+			if g.splitSecondary == nil || g.splitSecondary == s || g.sessionIndex(g.splitSecondary) < 0 {
+				g.splitSecondary = g.firstOtherSession(s)
+				g.splitActiveLeading = true
+			}
+		}
+	}
 	g.active = s
 	g.showScreen(screenTerminal)
+	state := g.tr.T(i18n.TerminalStatusConnected)
+	if s.closed {
+		state = g.tr.T(i18n.TerminalStatusDisconnected)
+	}
+	g.setStatus(fmt.Sprintf("%s: %s", s.host.Name, state))
+}
+
+// focusSplitSession makes a clicked pane the keyboard focus without moving the
+// panes around. The sidebar and status bar follow the focused session.
+func (g *App) focusSplitSession(s *terminalSession) {
+	if s == nil || s == g.active || g.splitMode == splitNone {
+		return
+	}
+	if s != g.splitSecondarySession() {
+		return
+	}
+	previous := g.active
+	g.active = s
+	g.splitSecondary = previous
+	g.splitActiveLeading = !g.splitActiveLeading
+	g.refreshSidebar()
 	state := g.tr.T(i18n.TerminalStatusConnected)
 	if s.closed {
 		state = g.tr.T(i18n.TerminalStatusDisconnected)
@@ -211,8 +262,13 @@ func (g *App) refreshSessionRows() {
 		)
 		button.Alignment = widget.ButtonAlignLeading
 		button.Importance = widget.LowImportance
-		if g.screen == screenTerminal && g.active == session {
-			button.Importance = widget.HighImportance
+		if g.screen == screenTerminal {
+			switch {
+			case g.active == session:
+				button.Importance = widget.HighImportance
+			case g.splitMode != splitNone && g.splitSecondarySession() == session:
+				button.Importance = widget.MediumImportance
+			}
 		}
 
 		closeBtn := widget.NewButtonWithIcon("", theme.CancelIcon(), func() {
@@ -236,12 +292,96 @@ func sessionDotColor(s *terminalSession) color.Color {
 	return theme.Color(theme.ColorNameSuccess)
 }
 
-// buildTerminalWorkspace owns the terminal screen. The active session's content
-// is the only child, but all sessions keep their live views in memory.
+// buildTerminalWorkspace owns the terminal screen. One or two session views are
+// visible at a time; every session keeps its live view in memory.
 func (g *App) buildTerminalWorkspace() fyne.CanvasObject {
 	g.termStack = container.NewStack()
+	layoutLabel := widget.NewLabelWithStyle(
+		g.tr.T(i18n.TerminalLayout), fyne.TextAlignLeading, fyne.TextStyle{Bold: true},
+	)
+	g.termLayout = widget.NewSelect([]string{
+		g.tr.T(i18n.TerminalLayoutSingle),
+		g.tr.T(i18n.TerminalLayoutVertical),
+		g.tr.T(i18n.TerminalLayoutHorizontal),
+	}, nil)
+	g.termLayout.SetSelectedIndex(g.splitModeIndex())
+	g.termLayout.OnChanged = func(string) {
+		switch g.termLayout.SelectedIndex() {
+		case 1:
+			g.setSplitMode(splitVertical)
+		case 2:
+			g.setSplitMode(splitHorizontal)
+		default:
+			g.setSplitMode(splitNone)
+		}
+	}
+	layoutBox := container.NewGridWrap(fyne.NewSize(180, 44), g.termLayout)
+	toolbar := container.NewVBox(
+		container.NewPadded(container.NewHBox(layoutLabel, layoutBox)),
+		widget.NewSeparator(),
+	)
 	g.showActiveSession()
-	return g.termStack
+	return container.NewBorder(toolbar, nil, nil, nil, g.termStack)
+}
+
+func (g *App) splitModeIndex() int {
+	switch g.splitMode {
+	case splitVertical:
+		return 1
+	case splitHorizontal:
+		return 2
+	default:
+		return 0
+	}
+}
+
+func (g *App) setSplitMode(mode string) {
+	if mode != splitVertical && mode != splitHorizontal {
+		mode = splitNone
+	}
+	wasSingle := g.splitMode == splitNone
+	g.splitMode = mode
+	if mode == splitNone {
+		g.splitSecondary = nil
+		g.splitActiveLeading = true
+	} else {
+		if g.splitSecondary == nil || g.splitSecondary == g.active || g.sessionIndex(g.splitSecondary) < 0 {
+			g.splitSecondary = g.firstOtherSession(g.active)
+		}
+		if wasSingle {
+			g.splitActiveLeading = true
+		}
+	}
+	if g.termLayout != nil && g.termLayout.SelectedIndex() != g.splitModeIndex() {
+		g.termLayout.SetSelectedIndex(g.splitModeIndex())
+	}
+	g.showActiveSession()
+	g.refreshSidebar()
+	if g.win != nil && g.active != nil && g.active.view != nil {
+		g.win.Canvas().Focus(g.active.view)
+	}
+}
+
+// splitSecondarySession returns the other visible pane, preferring the session
+// the user last placed there. If it has been closed, the next open session fills
+// the pane so a split never shows the same terminal twice.
+func (g *App) splitSecondarySession() *terminalSession {
+	if g.splitMode == splitNone {
+		return nil
+	}
+	if g.splitSecondary != nil && g.splitSecondary != g.active && g.sessionIndex(g.splitSecondary) >= 0 {
+		return g.splitSecondary
+	}
+	return g.firstOtherSession(g.active)
+}
+
+func (g *App) firstOtherSession(s *terminalSession) *terminalSession {
+	for _, open := range g.sessions {
+		if open != s {
+			return open
+		}
+	}
+	return nil
 }
 
 func (g *App) showActiveSession() {
@@ -249,10 +389,29 @@ func (g *App) showActiveSession() {
 		return
 	}
 	var body fyne.CanvasObject
-	if g.active != nil && g.active.content != nil {
+	if g.active == nil || g.active.content == nil {
+		body = g.terminalPlaceholder()
+	} else if g.splitMode == splitNone {
 		body = g.active.content
 	} else {
-		body = g.terminalPlaceholder()
+		secondary := g.splitSecondarySession()
+		if secondary != nil {
+			g.splitSecondary = secondary
+		}
+		leading := g.active
+		trailing := secondary
+		if !g.splitActiveLeading && trailing != nil {
+			leading, trailing = trailing, leading
+		}
+		trailingObj := g.splitPlaceholder()
+		if trailing != nil && trailing.content != nil {
+			trailingObj = trailing.content
+		}
+		if g.splitMode == splitHorizontal {
+			body = container.NewVSplit(leading.content, trailingObj)
+		} else {
+			body = container.NewHSplit(leading.content, trailingObj)
+		}
 	}
 	g.termStack.Objects = []fyne.CanvasObject{body}
 	g.termStack.Refresh()
@@ -268,6 +427,17 @@ func (g *App) terminalPlaceholder() fyne.CanvasObject {
 	newBtn.Importance = widget.HighImportance
 	content := container.NewVBox(title, hint, newBtn)
 	return container.NewCenter(container.NewPadded(content))
+}
+
+func (g *App) splitPlaceholder() fyne.CanvasObject {
+	hint := widget.NewLabel(g.tr.T(i18n.TerminalSplitEmpty))
+	hint.Alignment = fyne.TextAlignCenter
+	hint.Wrapping = fyne.TextWrapWord
+	newBtn := widget.NewButtonWithIcon(g.tr.T(i18n.SidebarNewTerminal), theme.ComputerIcon(), func() {
+		g.pickHost(g.tr.T(i18n.TerminalPickHost), g.connect)
+	})
+	newBtn.Importance = widget.HighImportance
+	return container.NewCenter(container.NewPadded(container.NewVBox(hint, newBtn)))
 }
 
 // pickHost lets the sidebar spawn a session without first visiting the

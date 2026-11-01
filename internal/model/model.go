@@ -34,6 +34,8 @@ const (
 	MonitorSSH MonitorMode = "ssh"
 	// MonitorTCP only checks whether the SSH port accepts a connection.
 	MonitorTCP MonitorMode = "tcp"
+	// MonitorOff disables probes and metric collection for this host.
+	MonitorOff MonitorMode = "off"
 )
 
 // Host is one server the user manages.

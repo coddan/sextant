@@ -79,6 +79,100 @@ func TestSidebarSettingsButtonSwitchesScreen(t *testing.T) {
 	}
 }
 
+func TestTerminalSplitOrientation(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	first := &terminalSession{title: "web-01", content: widget.NewLabel("one")}
+	second := &terminalSession{title: "db-01", content: widget.NewLabel("two")}
+	g := &App{
+		tr:          i18n.New("en"),
+		sessions:    []*terminalSession{first, second},
+		active:      first,
+		termStack:   container.NewStack(),
+		sessionRows: container.NewVBox(),
+		navButtons:  map[screenID]*widget.Button{},
+	}
+
+	g.setSplitMode(splitVertical)
+	split, ok := g.termStack.Objects[0].(*container.Split)
+	if !ok {
+		t.Fatalf("vertical split rendered %T, want *container.Split", g.termStack.Objects[0])
+	}
+	if !split.Horizontal || split.Leading != first.content || split.Trailing != second.content {
+		t.Fatal("vertical split should place the two terminals side by side")
+	}
+
+	g.setSplitMode(splitHorizontal)
+	split, ok = g.termStack.Objects[0].(*container.Split)
+	if !ok {
+		t.Fatalf("horizontal split rendered %T, want *container.Split", g.termStack.Objects[0])
+	}
+	if split.Horizontal {
+		t.Fatal("horizontal split should stack the two terminals")
+	}
+
+	g.setSplitMode(splitNone)
+	if g.termStack.Objects[0] != first.content {
+		t.Fatal("single layout should show only the focused terminal")
+	}
+}
+
+func TestActivatingSessionSwapsSplitPanes(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	first := &terminalSession{title: "web-01"}
+	second := &terminalSession{title: "db-01"}
+	g := &App{
+		tr:                 i18n.New("en"),
+		sessions:           []*terminalSession{first, second},
+		active:             first,
+		splitMode:          splitVertical,
+		splitSecondary:     second,
+		splitActiveLeading: true,
+		sessionRows:        container.NewVBox(),
+		navButtons:         map[screenID]*widget.Button{},
+	}
+
+	g.activateSession(second)
+	if g.active != second || g.splitSecondary != first {
+		t.Fatal("clicking the other pane should swap focus without changing the two visible sessions")
+	}
+	if g.splitActiveLeading {
+		t.Fatal("the clicked pane should remain in its original trailing position")
+	}
+}
+
+func TestFocusSplitSessionKeepsPaneOrder(t *testing.T) {
+	a := test.NewApp()
+	defer a.Quit()
+
+	first := &terminalSession{title: "web-01", content: widget.NewLabel("one")}
+	second := &terminalSession{title: "db-01", content: widget.NewLabel("two")}
+	g := &App{
+		tr:                 i18n.New("en"),
+		sessions:           []*terminalSession{first, second},
+		active:             first,
+		splitMode:          splitVertical,
+		splitSecondary:     second,
+		splitActiveLeading: true,
+		termStack:          container.NewStack(),
+		sessionRows:        container.NewVBox(),
+		navButtons:         map[screenID]*widget.Button{},
+	}
+
+	g.focusSplitSession(second)
+	g.showActiveSession()
+	split, ok := g.termStack.Objects[0].(*container.Split)
+	if !ok {
+		t.Fatalf("split rendered %T, want *container.Split", g.termStack.Objects[0])
+	}
+	if split.Leading != first.content || split.Trailing != second.content {
+		t.Fatal("focusing the trailing terminal should not move it to the leading side")
+	}
+}
+
 func TestEndSessionKeepsOtherSessionsAlive(t *testing.T) {
 	a := test.NewApp()
 	defer a.Quit()

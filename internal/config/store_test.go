@@ -22,6 +22,38 @@ func testPaths(t *testing.T) Paths {
 	}
 }
 
+func TestNormalizeCardLayout(t *testing.T) {
+	s := DefaultSettings()
+	s.UI.CardLayout = "mosaic"
+	s.Normalize()
+	if s.UI.CardLayout != "grid" {
+		t.Fatalf("invalid card layout = %q, want grid", s.UI.CardLayout)
+	}
+	s.UI.CardLayout = "list"
+	s.Normalize()
+	if s.UI.CardLayout != "list" {
+		t.Fatalf("list card layout = %q, want list", s.UI.CardLayout)
+	}
+}
+
+func TestNormalizeHostsMonitoring(t *testing.T) {
+	hosts := []model.Host{
+		{Monitoring: "mosaic"},
+		{Monitoring: model.MonitorOff},
+		{Monitoring: model.MonitorTCP},
+	}
+	normalizeHosts(hosts)
+	if hosts[0].Monitoring != model.MonitorSSH {
+		t.Fatalf("unknown monitor mode = %q, want ssh", hosts[0].Monitoring)
+	}
+	if hosts[1].Monitoring != model.MonitorOff {
+		t.Fatalf("off monitor mode = %q, want off", hosts[1].Monitoring)
+	}
+	if hosts[2].Monitoring != model.MonitorTCP {
+		t.Fatalf("tcp monitor mode = %q, want tcp", hosts[2].Monitoring)
+	}
+}
+
 func TestStoreRoundTripAndPasswordEncryption(t *testing.T) {
 	paths := testPaths(t)
 	store, err := OpenAt(paths)

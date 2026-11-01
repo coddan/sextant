@@ -154,6 +154,7 @@ func (p *settingsPanel) rows(m *Model) []settingRow {
 		{"general.confirmclose", m.tr(i18n.SettingsConfirmCloseTab), boolText(s.General.ConfirmCloseTab)},
 		{"ui.showip", m.tr(i18n.SettingsShowIP), boolText(s.UI.ShowIP)},
 		{"general.refresh", m.tr(i18n.SettingsRefreshInterval), strconv.Itoa(s.General.RefreshIntervalSeconds)},
+		{"general.metrics", m.tr(i18n.SettingsCollectMetrics), boolText(!s.General.MetricsDisabled)},
 		{"general.maxconcurrent", m.tr(i18n.SettingsMaxConcurrent), strconv.Itoa(s.General.MaxConcurrent)},
 	}
 }
@@ -221,6 +222,15 @@ func (p *settingsPanel) handle(key tea.KeyMsg, m *Model) (changed bool, err erro
 	case "general.refresh":
 		s.General.RefreshIntervalSeconds = clampInt(s.General.RefreshIntervalSeconds+delta*5, 5, 600)
 		if delta != 0 {
+			return true, nil
+		}
+	case "general.metrics":
+		if isToggleKey(key) {
+			s.General.MetricsDisabled = !s.General.MetricsDisabled
+			if s.General.MetricsDisabled {
+				clear(m.metrics)
+				m.loading = false
+			}
 			return true, nil
 		}
 	case "general.maxconcurrent":

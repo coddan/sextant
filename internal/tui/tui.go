@@ -133,7 +133,7 @@ func (m *Model) applyFilter() {
 		if h.Hidden {
 			continue
 		}
-		if m.onlyOnline {
+		if m.onlyOnline && !m.rt.Store.Settings.General.MetricsDisabled {
 			met, ok := m.metrics[h.ID]
 			if !ok || met.Error != "" {
 				continue

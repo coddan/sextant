@@ -164,19 +164,20 @@ func (v *snippetView) appendLine(line string) {
 // ---------------------------------------------------------------------------
 
 type settingsView struct {
-	app          *App
-	lang         *widget.Select
-	themeSel     *widget.Select
-	timeout      *widget.Entry
-	errorTimeout *widget.Entry
-	sticky       *widget.Check
-	confirmClose *widget.Check
-	sudo         *widget.Check
-	showIP       *widget.Check
-	refreshSec   *widget.Entry
-	maxConc      *widget.Entry
-	fontFamily   *widget.Entry
-	fontSize     *widget.Entry
+	app            *App
+	lang           *widget.Select
+	themeSel       *widget.Select
+	timeout        *widget.Entry
+	errorTimeout   *widget.Entry
+	sticky         *widget.Check
+	confirmClose   *widget.Check
+	sudo           *widget.Check
+	showIP         *widget.Check
+	collectMetrics *widget.Check
+	refreshSec     *widget.Entry
+	maxConc        *widget.Entry
+	fontFamily     *widget.Entry
+	fontSize       *widget.Entry
 
 	langs []i18n.Lang
 }
@@ -205,6 +206,7 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 	v.confirmClose = widget.NewCheck(g.tr.T(i18n.SettingsConfirmCloseTab), nil)
 	v.sudo = widget.NewCheck(g.tr.T(i18n.TerminalSudoAutofill), nil)
 	v.showIP = widget.NewCheck(g.tr.T(i18n.SettingsShowIP), nil)
+	v.collectMetrics = widget.NewCheck(g.tr.T(i18n.SettingsCollectMetrics), nil)
 	v.fontFamily = widget.NewEntry()
 	v.fontFamily.SetPlaceHolder(g.tr.T(i18n.TerminalFontFamily))
 	v.fontSize = widget.NewEntry()
@@ -219,6 +221,7 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 		widget.NewFormItem("", v.sudo),
 		widget.NewFormItem("", v.showIP),
 		widget.NewFormItem(g.tr.T(i18n.SettingsRefreshInterval), v.refreshSec),
+		widget.NewFormItem("", v.collectMetrics),
 		widget.NewFormItem(g.tr.T(i18n.SettingsMaxConcurrent), v.maxConc),
 		widget.NewFormItem(g.tr.T(i18n.TerminalFontFamily), v.fontFamily),
 		widget.NewFormItem(g.tr.T(i18n.TerminalFontSize), v.fontSize),
@@ -254,6 +257,7 @@ func (v *settingsView) refresh() {
 	v.confirmClose.SetChecked(s.General.ConfirmCloseTab)
 	v.sudo.SetChecked(s.Terminal.SudoAutofill)
 	v.showIP.SetChecked(s.UI.ShowIP)
+	v.collectMetrics.SetChecked(!s.General.MetricsDisabled)
 	v.refreshSec.SetText(strconv.Itoa(s.General.RefreshIntervalSeconds))
 	v.maxConc.SetText(strconv.Itoa(s.General.MaxConcurrent))
 	v.fontFamily.SetText(s.Terminal.FontFamily)
@@ -280,6 +284,7 @@ func (v *settingsView) apply() {
 	s.General.ConfirmCloseTab = v.confirmClose.Checked
 	s.Terminal.SudoAutofill = v.sudo.Checked
 	s.UI.ShowIP = v.showIP.Checked
+	s.General.MetricsDisabled = !v.collectMetrics.Checked
 	s.General.RefreshIntervalSeconds = atoiDefault(v.refreshSec.Text, s.General.RefreshIntervalSeconds)
 	s.General.MaxConcurrent = atoiDefault(v.maxConc.Text, s.General.MaxConcurrent)
 	s.Terminal.FontFamily = strings.TrimSpace(v.fontFamily.Text)
@@ -290,6 +295,10 @@ func (v *settingsView) apply() {
 	if err := v.app.rt.Save(); err != nil {
 		dialog.ShowError(err, v.app.win)
 		return
+	}
+	if s.General.MetricsDisabled {
+		clear(v.app.metrics)
+		clear(v.app.metricsRetry)
 	}
 	v.app.rt.Tr.SetLang(s.UI.Language)
 	v.app.applyTheme()

@@ -41,7 +41,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case metricsMsg:
-		m.metrics[msg.hostID] = msg.m
+		if !m.rt.Store.Settings.General.MetricsDisabled {
+			m.metrics[msg.hostID] = msg.m
+		}
 		return m, nil
 
 	case statusMsg:
@@ -269,6 +271,10 @@ func (m *Model) updateDashboard(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.setStatus("%s %s", m.tr(i18n.NotifyDeleted), h.Name)
 		}
 	case "o":
+		if m.rt.Store.Settings.General.MetricsDisabled {
+			m.setStatus("%s", m.tr(i18n.DashboardMetricsOff))
+			return m, nil
+		}
 		m.onlyOnline = !m.onlyOnline
 		m.applyFilter()
 		if m.onlyOnline {
@@ -278,6 +284,14 @@ func (m *Model) updateDashboard(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 	case "m":
 		if h, ok := m.selectedHost(); ok {
+			if h.Monitoring != model.MonitorSSH || m.rt.Store.Settings.General.MetricsDisabled {
+				if h.Monitoring == model.MonitorOff {
+					m.setStatus("%s", m.tr(i18n.DashboardMonitoringOff))
+				} else {
+					m.setStatus("%s", m.tr(i18n.DashboardMetricsOff))
+				}
+				return m, nil
+			}
 			m.loading = true
 			return m, m.metricsCmd(h)
 		}
@@ -671,10 +685,18 @@ func (m *Model) metricsCmd(h model.Host) tea.Cmd {
 	}
 }
 
-// collectAllCmd samples every host in parallel.
+// collectAllCmd samples every SSH-monitored host in parallel. Hidden hosts,
+// monitor-off hosts, and the whole pass respect the dashboard's metrics opt-out.
 func (m *Model) collectAllCmd() tea.Cmd {
+	if m.rt.Store.Settings.General.MetricsDisabled {
+		m.loading = false
+		return nil
+	}
 	var cmds []tea.Cmd
 	for _, h := range m.hosts {
+		if h.Hidden || h.Monitoring != model.MonitorSSH {
+			continue
+		}
 		cmds = append(cmds, m.metricsCmd(h))
 	}
 	if len(cmds) == 0 {

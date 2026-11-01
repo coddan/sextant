@@ -51,17 +51,21 @@ toolchain), so the installer falls back to the terminal client there.
 ## Features
 
 ### Live dashboard
-Every host in one list with CPU, RAM and disk, uptime, distro and top
+Every host in one view with CPU, RAM and disk, uptime, distro and top
 processes. Filter as you type, show only the hosts that answer (`o`), hide the
-ones you do not want to see. Windows hosts report the same metrics as Linux
-ones, including a GPU section when the driver exposes one.
+ones you do not want to see, and switch the desktop dashboard between cards and
+a compact virtualised list for large inventories. Windows hosts report the same
+metrics as Linux ones, including a GPU section when the driver exposes one.
+Metrics collection is optional, and individual hosts can be set to TCP-only or
+monitoring off.
 
 ### Real terminals
 A full PTY per host with a built-in VT emulator: 256-colour and true-colour
 output, scrollback with search (`Ctrl+F`), and a faithful cursor. The desktop
-app keeps every session in its own tab, so you can open as many hosts as you
-need and leave them running. Remote programs that copy through OSC 52 land in
-your local clipboard, so copying from an agent like Claude Code or Codex works.
+app keeps every session in its own tab or split pane (horizontal or vertical),
+so you can open as many hosts as you need and leave them running. Remote
+programs that copy through OSC 52 land in your local clipboard, so copying from
+an agent like Claude Code or Codex works.
 
 ### SFTP
 Browse remote directories, upload, download, rename, delete trees, create

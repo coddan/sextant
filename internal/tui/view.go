@@ -198,14 +198,21 @@ func (m *Model) dashboardView() string {
 	for i := start; i < len(m.visible) && i < start+maxRows; i++ {
 		h := m.visible[i]
 		met, hasMetrics := m.metrics[h.ID]
+		showMetrics := h.Monitoring == model.MonitorSSH &&
+			!m.rt.Store.Settings.General.MetricsDisabled
 		status := mutedStyle.Render(m.tr(i18n.CommonUnknown))
-		if hasMetrics && met.Error == "" {
+		switch {
+		case h.Monitoring == model.MonitorOff:
+			status = mutedStyle.Render(m.tr(i18n.DashboardMonitoringOff))
+		case h.Monitoring == model.MonitorTCP:
+			status = mutedStyle.Render(m.tr(i18n.DashboardTCPOnly))
+		case showMetrics && hasMetrics && met.Error == "":
 			status = successStyle.Render(m.tr(i18n.DashboardOnline))
-		} else if hasMetrics && met.Error != "" {
+		case showMetrics && hasMetrics && met.Error != "":
 			status = errorStyle.Render(m.tr(i18n.DashboardOffline))
 		}
 		cpu, ram, disk := "-", "-", "-"
-		if hasMetrics {
+		if showMetrics && hasMetrics {
 			cpu = pct(met.CPUPercent)
 			ram = pct(met.RAMPercent)
 			disk = pct(met.DiskPercent)

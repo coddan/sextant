@@ -63,11 +63,34 @@ func (g *App) buildHostsTab() fyne.CanvasObject {
 		}
 	})
 
+	gridLabel := g.tr.T(i18n.DashboardViewGrid)
+	listLabel := g.tr.T(i18n.DashboardViewList)
+	g.layoutSelect = widget.NewSelect([]string{gridLabel, listLabel}, nil)
+	if g.hostsLayout() == "list" {
+		g.layoutSelect.SetSelectedIndex(1)
+	} else {
+		g.layoutSelect.SetSelectedIndex(0)
+	}
+	g.layoutSelect.OnChanged = func(string) {
+		layout := "grid"
+		if g.layoutSelect.SelectedIndex() == 1 {
+			layout = "list"
+		}
+		if g.rt.Store.Settings.UI.CardLayout == layout {
+			return
+		}
+		g.rt.Store.Settings.UI.CardLayout = layout
+		if err := g.rt.Save(); err != nil {
+			g.showError(err)
+		}
+		g.refreshHosts()
+	}
+
 	title := canvas.NewText(g.tr.T(i18n.NavDashboard), theme.Color(theme.ColorNameForeground))
 	title.TextSize = 24
 	title.TextStyle = fyne.TextStyle{Bold: true}
 	search := container.NewGridWrap(fyne.NewSize(240, 38), filter)
-	header := container.NewBorder(nil, nil, title, container.NewHBox(search, refreshBtn, newBtn))
+	header := container.NewBorder(nil, nil, title, container.NewHBox(search, g.layoutSelect, refreshBtn, newBtn))
 	imports := container.NewHBox(sshBtn, puttyBtn, g.onlyOnline)
 	top := container.NewVBox(
 		container.NewPadded(header),
@@ -79,10 +102,30 @@ func (g *App) buildHostsTab() fyne.CanvasObject {
 	// Wrap the grid in a VBox so a short list keeps its natural card height
 	// instead of stretching the rows to fill the scroll viewport.
 	g.hostsWrap = container.NewVBox(g.hostsBox)
-	scroll := container.NewVScroll(g.hostsWrap)
+	g.hostsScroll = container.NewVScroll(g.hostsWrap)
+	g.hostsList = widget.NewList(
+		func() int { return len(g.hosts) },
+		func() fyne.CanvasObject { return g.newHostListRow() },
+		func(id widget.ListItemID, obj fyne.CanvasObject) {
+			if id < 0 || id >= len(g.hosts) {
+				return
+			}
+			g.updateHostListRow(obj.(*hostListRow), g.hosts[id])
+		},
+	)
+	g.hostsBody = container.NewStack()
 
 	g.refreshHosts()
-	return container.NewBorder(top, nil, nil, nil, scroll)
+	return container.NewBorder(top, nil, nil, nil, g.hostsBody)
+}
+
+// hostsLayout returns the persisted dashboard presentation. Unknown values fall
+// back to the card grid so a hand-edited settings file cannot blank the view.
+func (g *App) hostsLayout() string {
+	if g.rt != nil && strings.EqualFold(g.rt.Store.Settings.UI.CardLayout, "list") {
+		return "list"
+	}
+	return "grid"
 }
 
 // refreshAll probes reachability and refreshes metrics for the whole list. This
@@ -151,7 +194,7 @@ func (g *App) probeAll() {
 	results := make(chan probeUpdate, len(hosts))
 	var wg sync.WaitGroup
 	for _, h := range hosts {
-		if h.Hidden {
+		if h.Hidden || h.Monitoring == model.MonitorOff {
 			continue
 		}
 		host := h
@@ -177,17 +220,22 @@ func (g *App) probeAll() {
 // interactive authentication every interval. Manual refresh ignores it.
 const metricsAuthBackoff = 10 * time.Minute
 
+func (g *App) metricsDisabled() bool {
+	return g.rt != nil && g.rt.Store.Settings.General.MetricsDisabled
+}
+
 // refreshAllMetrics samples every SSH-monitored host using stored credentials
-// only. It returns false when a pass is already running. When force is false,
-// hosts that recently needed interactive authentication are skipped.
+// only. It returns false when a pass is already running or metrics are disabled.
+// When force is false, hosts that recently needed interactive authentication are
+// skipped.
 func (g *App) refreshAllMetrics(force bool) bool {
-	if g.metricsRun {
+	if g.metricsRun || g.metricsDisabled() {
 		return false
 	}
 	now := time.Now()
 	var hosts []model.Host
 	for _, h := range g.rt.Store.Hosts {
-		if h.Hidden || h.Monitoring == model.MonitorTCP {
+		if h.Hidden || h.Monitoring != model.MonitorSSH {
 			continue
 		}
 		if !force {
@@ -233,6 +281,11 @@ func (g *App) refreshAllMetrics(force bool) bool {
 		close(results)
 		fyne.Do(func() {
 			for update := range results {
+				// The user may have switched metrics off while this pass was
+				// in flight; do not repopulate the cache after it was cleared.
+				if g.metricsDisabled() {
+					continue
+				}
 				g.metrics[update.id] = update.met
 				if update.met.Error == "" {
 					delete(g.metricsRetry, update.id)
@@ -247,9 +300,11 @@ func (g *App) refreshAllMetrics(force bool) bool {
 	return true
 }
 
-// refreshHosts rebuilds the visible card grid, honouring the filter.
+// refreshHosts rebuilds the visible host view, honouring the filter. The card
+// grid is best for a handful of hosts; the virtualised list keeps hundreds of
+// rows responsive and makes scanning names much easier.
 func (g *App) refreshHosts() {
-	if g.hostsBox == nil || g.hostsWrap == nil {
+	if g.hostsBody == nil || g.hostsBox == nil || g.hostsWrap == nil {
 		return
 	}
 	needle := strings.ToLower(strings.TrimSpace(g.filterText))
@@ -277,22 +332,36 @@ func (g *App) refreshHosts() {
 		// Put the empty message in the wrapper so it spans the full width
 		// instead of occupying the first cell of the two-column grid.
 		g.hostsWrap.Objects = []fyne.CanvasObject{container.NewPadded(empty)}
+		g.hostsBody.Objects = []fyne.CanvasObject{container.NewCenter(g.hostsWrap)}
+	} else if g.hostsLayout() == "list" {
+		// Drop card widgets while the virtualised list is showing; switching
+		// back rebuilds only the visible grid.
+		g.hostsBox.Objects = nil
+		g.hostsWrap.Objects = nil
+		g.hostsList.Refresh()
+		g.hostsBody.Objects = []fyne.CanvasObject{g.hostsList}
 	} else {
-		cards := make([]fyne.CanvasObject, 0, len(g.hosts))
+		g.hostsBox.Objects = g.hostsBox.Objects[:0]
 		for _, h := range g.hosts {
-			cards = append(cards, g.hostCard(h))
+			g.hostsBox.Objects = append(g.hostsBox.Objects, g.hostCard(h))
 		}
-		g.hostsBox.Objects = cards
 		g.hostsWrap.Objects = []fyne.CanvasObject{g.hostsBox}
+		g.hostsBody.Objects = []fyne.CanvasObject{g.hostsScroll}
 	}
 	g.hostsBox.Refresh()
 	g.hostsWrap.Refresh()
+	g.hostsBody.Refresh()
 }
 
 // hostReachable reports the best reachability signal available for a host.
 func (g *App) hostReachable(h model.Host) bool {
-	if met, ok := g.metrics[h.ID]; ok && met.CollectedAt.After(time.Time{}) && met.Error == "" {
-		return true
+	if h.Monitoring == model.MonitorOff {
+		return false
+	}
+	if !g.metricsDisabled() {
+		if met, ok := g.metrics[h.ID]; ok && met.CollectedAt.After(time.Time{}) && met.Error == "" {
+			return true
+		}
 	}
 	if probe, ok := g.probes[h.ID]; ok {
 		return probe.Online
@@ -308,12 +377,16 @@ const (
 	healthOnline
 	healthOffline
 	healthDegraded
+	healthDisabled
 )
 
 func (g *App) health(h model.Host) hostHealth {
+	if h.Monitoring == model.MonitorOff {
+		return healthDisabled
+	}
 	probe, hasProbe := g.probes[h.ID]
 	met, hasMetrics := g.metrics[h.ID]
-	hasMetrics = hasMetrics && met.CollectedAt.After(time.Time{})
+	hasMetrics = hasMetrics && met.CollectedAt.After(time.Time{}) && !g.metricsDisabled()
 
 	switch {
 	case hasMetrics && met.Error == "":
@@ -380,6 +453,8 @@ func (g *App) healthText(s hostHealth) string {
 		return g.tr.T(i18n.DashboardOffline)
 	case healthDegraded:
 		return g.tr.T(i18n.DashboardDegraded)
+	case healthDisabled:
+		return g.tr.T(i18n.DashboardMonitoringOff)
 	default:
 		return g.tr.T(i18n.CommonUnknown)
 	}
@@ -389,6 +464,7 @@ func (g *App) healthText(s hostHealth) string {
 func (g *App) hostCard(h model.Host) fyne.CanvasObject {
 	met := g.metrics[h.ID]
 	health := g.health(h)
+	showMetrics := h.Monitoring == model.MonitorSSH && !g.metricsDisabled()
 
 	dot := canvas.NewCircle(health.color())
 	dot.Resize(fyne.NewSize(9, 9))
@@ -408,43 +484,53 @@ func (g *App) hostCard(h model.Host) fyne.CanvasObject {
 	addr.Importance = widget.LowImportance
 	addr.Truncation = fyne.TextTruncateEllipsis
 
-	bars := container.NewGridWithColumns(3,
-		newMetricBar(g.tr.T(i18n.MetricsCPU), met.CPUPercent),
-		newMetricBar(g.tr.T(i18n.MetricsRAM), met.RAMPercent),
-		newMetricBar(g.tr.T(i18n.MetricsDisk), met.DiskPercent),
-	)
-
-	detail := g.metricDetail(met)
-	if h.Monitoring == model.MonitorTCP {
-		hint := widget.NewLabel(g.tr.T(i18n.MetricsTCPOnly))
-		hint.Importance = widget.LowImportance
-		hint.Truncation = fyne.TextTruncateEllipsis
-		detail = hint
-	}
-	errorText := g.metricError(met)
-
 	connectBtn := widget.NewButtonWithIcon(g.tr.T(i18n.NavTerminal), theme.MediaPlayIcon(), func() { g.connect(h) })
 	connectBtn.Importance = widget.HighImportance
 	sftpBtn := widget.NewButtonWithIcon("", theme.FolderIcon(), func() { g.openSFTP(h) })
 	sampleBtn := widget.NewButtonWithIcon(g.tr.T(i18n.MetricsRefresh), theme.ViewRefreshIcon(), func() { g.sample(h) })
 	editBtn := widget.NewButtonWithIcon("", theme.DocumentCreateIcon(), func() { g.editHost(h) })
 	delBtn := widget.NewButtonWithIcon("", theme.DeleteIcon(), func() { g.confirmDelete(h) })
-	leftActions := container.NewHBox(connectBtn, sftpBtn, sampleBtn)
-	if h.Monitoring == model.MonitorTCP {
-		leftActions = container.NewHBox(connectBtn, sftpBtn)
+	leftActions := container.NewHBox(connectBtn, sftpBtn)
+	if showMetrics {
+		leftActions.Add(sampleBtn)
 	}
 	actions := container.NewBorder(nil, nil, leftActions, container.NewHBox(editBtn, delBtn))
 
-	content := container.NewVBox(header, addr, bars)
-	if detail != nil {
-		content.Add(detail)
-	}
-	if errorText != nil {
-		content.Add(errorText)
+	content := container.NewVBox(header, addr)
+	if showMetrics {
+		content.Add(container.NewGridWithColumns(3,
+			newMetricBar(g.tr.T(i18n.MetricsCPU), met.CPUPercent),
+			newMetricBar(g.tr.T(i18n.MetricsRAM), met.RAMPercent),
+			newMetricBar(g.tr.T(i18n.MetricsDisk), met.DiskPercent),
+		))
+		if detail := g.metricDetail(met); detail != nil {
+			content.Add(detail)
+		}
+		if errorText := g.metricError(met); errorText != nil {
+			content.Add(errorText)
+		}
+	} else if hintText := g.hostMetricsHint(h); hintText != "" {
+		hint := widget.NewLabel(hintText)
+		hint.Importance = widget.LowImportance
+		hint.Truncation = fyne.TextTruncateEllipsis
+		content.Add(hint)
 	}
 	content.Add(widget.NewSeparator())
 	content.Add(actions)
 	return container.NewPadded(widget.NewCard("", "", content))
+}
+
+func (g *App) hostMetricsHint(h model.Host) string {
+	switch {
+	case h.Monitoring == model.MonitorOff:
+		return g.tr.T(i18n.DashboardMonitoringOff)
+	case h.Monitoring == model.MonitorTCP:
+		return g.tr.T(i18n.MetricsTCPOnly)
+	case g.metricsDisabled():
+		return g.tr.T(i18n.DashboardMetricsOff)
+	default:
+		return ""
+	}
 }
 
 // metricDetail shows uptime and OS when a sample is available.
@@ -507,12 +593,18 @@ func (g *App) metricError(met model.Metrics) fyne.CanvasObject {
 // sample connects in the background and records metrics, allowing prompts for
 // hosts that background collection cannot authenticate.
 func (g *App) sample(h model.Host) {
+	if g.metricsDisabled() || h.Monitoring != model.MonitorSSH {
+		return
+	}
 	g.notify(model.NotifyInfo, fmt.Sprintf("%s %s…", g.tr.T(i18n.MetricsCollecting), h.Name))
 	go func() {
 		ctx, cancel := context.WithTimeout(g.ctx, 30*time.Second)
 		defer cancel()
 		met := g.rt.Metrics(ctx, h)
 		fyne.Do(func() {
+			if g.metricsDisabled() {
+				return
+			}
 			g.metrics[h.ID] = met
 			if met.Error == "" {
 				delete(g.metricsRetry, h.ID)
@@ -571,8 +663,14 @@ func (g *App) editHost(existing model.Host) {
 	notes.MultiLine = true
 	notes.SetMinRowsVisible(3)
 
-	monitor := widget.NewSelect([]string{"ssh", "tcp"}, nil)
-	monitor.SetSelected(string(orDefault(string(existing.Monitoring), string(model.MonitorSSH))))
+	monitorModes := []model.MonitorMode{model.MonitorSSH, model.MonitorTCP, model.MonitorOff}
+	monitorLabels := []string{
+		g.tr.T(i18n.HostMonitorSSH),
+		g.tr.T(i18n.HostMonitorTCP),
+		g.tr.T(i18n.HostMonitorOff),
+	}
+	monitor := widget.NewSelect(monitorLabels, nil)
+	monitor.SetSelectedIndex(monitorModeIndex(existing.Monitoring))
 
 	groupSel := widget.NewSelect(g.groupNames(), func(v string) { group.SetText(v) })
 	groupSel.PlaceHolder = g.tr.T(i18n.HostGroup)
@@ -634,10 +732,9 @@ func (g *App) editHost(existing model.Host) {
 		h.LocalForwards = splitList(localFwd.Text)
 		h.DynamicForward = strings.TrimSpace(dynamic.Text)
 		h.Notes = notes.Text
-		switch monitor.Selected {
-		case "tcp":
-			h.Monitoring = model.MonitorTCP
-		default:
+		if idx := monitor.SelectedIndex(); idx >= 0 && idx < len(monitorModes) {
+			h.Monitoring = monitorModes[idx]
+		} else {
 			h.Monitoring = model.MonitorSSH
 		}
 		h.IdentitiesOnly = identitiesOnly.Checked
@@ -665,6 +762,12 @@ func (g *App) editHost(existing model.Host) {
 		}
 		// New credentials or host settings deserve a fresh background try.
 		delete(g.metricsRetry, h.ID)
+		if h.Monitoring != model.MonitorSSH {
+			delete(g.metrics, h.ID)
+		}
+		if h.Monitoring == model.MonitorOff {
+			delete(g.probes, h.ID)
+		}
 		g.refreshHosts()
 		g.keys.refreshHosts()
 		g.notify(model.NotifySuccess, g.tr.T(i18n.NotifySaved))
@@ -774,6 +877,17 @@ func (g *App) importPuTTY() {
 		msg += "\n\n" + strings.Join(res.Warnings, "\n")
 	}
 	g.notify(model.NotifySuccess, msg)
+}
+
+func monitorModeIndex(mode model.MonitorMode) int {
+	switch mode {
+	case model.MonitorTCP:
+		return 1
+	case model.MonitorOff:
+		return 2
+	default:
+		return 0
+	}
 }
 
 func splitList(s string) []string {

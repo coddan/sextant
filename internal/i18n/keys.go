@@ -53,6 +53,11 @@ const (
 	DashboardOnline            Key = "dashboard.online"
 	DashboardOffline           Key = "dashboard.offline"
 	DashboardDegraded          Key = "dashboard.degraded"
+	DashboardMonitoringOff     Key = "dashboard.monitoring_off"
+	DashboardTCPOnly           Key = "dashboard.tcp_only"
+	DashboardMetricsOff        Key = "dashboard.metrics_off"
+	DashboardViewList          Key = "dashboard.view_list"
+	DashboardViewGrid          Key = "dashboard.view_grid"
 
 	// Host editor.
 	HostTitle           Key = "host.title"
@@ -77,6 +82,9 @@ const (
 	HostTunnelAutostart Key = "host.tunnel_autostart"
 	HostForwardAgent    Key = "host.forward_agent"
 	HostMonitoring      Key = "host.monitoring"
+	HostMonitorSSH      Key = "host.monitor_ssh"
+	HostMonitorTCP      Key = "host.monitor_tcp"
+	HostMonitorOff      Key = "host.monitor_off"
 	HostDeleteConfirm   Key = "host.delete_confirm"
 
 	// Terminal.
@@ -91,6 +99,11 @@ const (
 	TerminalNoSessions         Key = "terminal.no_sessions"
 	TerminalCloseConfirm       Key = "terminal.close_confirm"
 	TerminalPickHost           Key = "terminal.pick_host"
+	TerminalLayout             Key = "terminal.layout"
+	TerminalLayoutSingle       Key = "terminal.layout_single"
+	TerminalLayoutVertical     Key = "terminal.layout_vertical"
+	TerminalLayoutHorizontal   Key = "terminal.layout_horizontal"
+	TerminalSplitEmpty         Key = "terminal.split_empty"
 
 	// SFTP.
 	SFTPTitle           Key = "sftp.title"
@@ -147,6 +160,7 @@ const (
 	SettingsThemeDark           Key = "settings.theme_dark"
 	SettingsThemeLight          Key = "settings.theme_light"
 	SettingsRefreshInterval     Key = "settings.refresh_interval"
+	SettingsCollectMetrics      Key = "settings.collect_metrics"
 	SettingsMaxConcurrent       Key = "settings.max_concurrent"
 	SettingsConfirmCloseTab     Key = "settings.confirm_close_tab"
 	SettingsNotificationTimeout Key = "settings.notification_timeout"

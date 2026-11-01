@@ -20,6 +20,9 @@ type General struct {
 	ConfirmCloseTab        bool   `json:"confirm_close_tab"`
 	ImportSSHConfig        bool   `json:"import_ssh_config"`
 	StartMinimized         bool   `json:"start_minimized"`
+	// MetricsDisabled stops background SSH metric collection. Reachability
+	// probes still run unless every host is set to MonitorOff.
+	MetricsDisabled bool `json:"metrics_disabled,omitempty"`
 }
 
 // UI holds visual settings.
@@ -174,6 +177,9 @@ func (s *Settings) Normalize() {
 	if s.UI.Language == "" {
 		s.UI.Language = d.UI.Language
 	}
+	if s.UI.CardLayout != "grid" && s.UI.CardLayout != "list" {
+		s.UI.CardLayout = d.UI.CardLayout
+	}
 	if s.Terminal.FontSize <= 0 {
 		s.Terminal.FontSize = d.Terminal.FontSize
 	}
@@ -306,7 +312,9 @@ func normalizeHosts(hosts []model.Host) {
 		if h.Port == 0 {
 			h.Port = 22
 		}
-		if h.Monitoring == "" {
+		switch h.Monitoring {
+		case model.MonitorSSH, model.MonitorTCP, model.MonitorOff:
+		default:
 			h.Monitoring = model.MonitorSSH
 		}
 		if h.Source == "" {

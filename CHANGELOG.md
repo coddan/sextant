@@ -14,12 +14,26 @@ All notable changes to Sextant are documented here. The format follows
   a card or **Sessions → +** gets its own highlighted row and independent close
   button. Sessions keep their shell, scrollback and running programs while you
   switch screens or terminals, and closing one never touches the others.
-- **Card dashboard with automatic metrics.** The desktop host list is now a
+- **Split terminal panes.** The terminal **Layout** selector offers Single,
+  **Split vertical** (side by side) and **Split horizontal** (stacked). Click
+  either pane to move keyboard focus without moving the panes; the focused pane
+  is highlighted in the Sessions list. Closing a pane keeps the remaining
+  session visible and fills the other side with the next open session when one
+  is available.
+- **Card or list dashboard.** A persisted **Grid / List** selector makes large
+  inventories manageable. Grid keeps the metric cards; List uses a virtualised
+  row view with status, address, group, live CPU/RAM/disk summary and quick
+  connect, SFTP, edit and delete actions.
+- **Card dashboard with automatic metrics.** The desktop host list is a
   responsive card grid showing reachability, CPU/RAM/disk severity bars, OS,
   uptime and load. Metrics and reachability refresh in the background on the
   configured interval using stored credentials and the SSH agent; hosts that
   need an interactive login or a new host key are marked *Limited* and can be
   refreshed individually.
+- **Metrics are optional.** **Settings → Collect host metrics** turns the
+  background SSH metric pass off while keeping cheap reachability probes. When
+  disabled, cards and list rows hide metric bars and a per-host **Off**
+  monitoring mode skips probes and collection entirely.
 - **Complete dark and light themes.** **Settings → Theme** offers Default
   (follow the desktop), Dark and Light. The choice covers the navigation rail,
   cards, dialogs and terminals, and changes immediately without reconnecting.

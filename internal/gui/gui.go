@@ -32,18 +32,26 @@ type App struct {
 
 	status *widget.Label
 
-	sidebar     fyne.CanvasObject
-	navButtons  map[screenID]*widget.Button
-	sessionRows *fyne.Container
-	content     *fyne.Container
-	views       map[screenID]fyne.CanvasObject
-	screen      screenID
-	sessions    []*terminalSession
-	active      *terminalSession
-	termStack   *fyne.Container
+	sidebar            fyne.CanvasObject
+	navButtons         map[screenID]*widget.Button
+	sessionRows        *fyne.Container
+	content            *fyne.Container
+	views              map[screenID]fyne.CanvasObject
+	screen             screenID
+	sessions           []*terminalSession
+	active             *terminalSession
+	termStack          *fyne.Container
+	termLayout         *widget.Select
+	splitMode          string
+	splitSecondary     *terminalSession
+	splitActiveLeading bool
 
 	hostsBox     *fyne.Container
 	hostsWrap    *fyne.Container
+	hostsScroll  *container.Scroll
+	hostsList    *widget.List
+	hostsBody    *fyne.Container
+	layoutSelect *widget.Select
 	filterText   string
 	onlyOnline   *widget.Check
 	metrics      map[string]model.Metrics

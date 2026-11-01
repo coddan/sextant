@@ -84,6 +84,20 @@ func TestHostHealth(t *testing.T) {
 	}
 }
 
+func TestMonitorModeIndex(t *testing.T) {
+	cases := map[model.MonitorMode]int{
+		"":               0,
+		model.MonitorSSH: 0,
+		model.MonitorTCP: 1,
+		model.MonitorOff: 2,
+	}
+	for mode, want := range cases {
+		if got := monitorModeIndex(mode); got != want {
+			t.Errorf("monitorModeIndex(%q) = %d, want %d", mode, got, want)
+		}
+	}
+}
+
 func TestShortOS(t *testing.T) {
 	cases := map[string]string{
 		"Fedora Linux 43 (Server Edition)": "Fedora Linux 43",
@@ -121,12 +135,13 @@ func TestHostCardRenders(t *testing.T) {
 		probes: map[string]sshclient.ProbeResult{"h1": {Online: true}},
 	}
 	host := model.Host{
-		ID:       "h1",
-		Name:     "web-01",
-		User:     "root",
-		Hostname: "10.0.0.5",
-		Port:     22,
-		Group:    "prod",
+		ID:         "h1",
+		Name:       "web-01",
+		User:       "root",
+		Hostname:   "10.0.0.5",
+		Port:       22,
+		Group:      "prod",
+		Monitoring: model.MonitorSSH,
 	}
 	card := g.hostCard(host)
 	if card == nil {
