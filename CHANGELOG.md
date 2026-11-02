@@ -6,6 +6,8 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-11-02
+
 ### Fixed
 
 - **Terminal copy and paste.** Fyne consumed every modified key before the
@@ -120,7 +122,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/coddan/sextant/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/coddan/sextant/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/coddan/sextant/releases/tag/v0.1.1
 [1.1.5]: https://github.com/coddan/sextant/releases/tag/v1.1.5
