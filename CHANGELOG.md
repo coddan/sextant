@@ -6,6 +6,13 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **Terminal copy and paste.** Fyne consumed every modified key before the
+  terminal saw it, so `Ctrl+C`, `Ctrl+Shift+C/V` and other Ctrl combinations
+  never reached the terminal. The terminal now handles shortcuts itself, supports
+  drag selection with highlighting, and `Tab`/`Shift+Tab` reach the shell.
+
 ## [0.2.0] — 2026-11-01
 
 ### Added

@@ -3,6 +3,7 @@ package gui
 import (
 	"fmt"
 	"image/color"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -35,9 +36,26 @@ type TerminalView struct {
 	mu       sync.Mutex
 	size     fyne.Size
 	fontSize float32
+	cellW    float32
+	cellH    float32
 	offset   int
 	closed   bool
+
+	// Selection is stored in virtual-line and cell coordinates so it keeps its
+	// meaning while the view scrolls or new output arrives. End positions are
+	// inclusive for rendering and converted to exclusive rune offsets on copy.
+	selecting                   bool
+	hasSelection                bool
+	selAnchorLine, selAnchorCol int
+	selCursorLine, selCursorCol int
 }
+
+var (
+	_ fyne.Shortcutable = (*TerminalView)(nil)
+	_ fyne.Tabbable     = (*TerminalView)(nil)
+	_ fyne.Draggable    = (*TerminalView)(nil)
+	_ desktop.Mouseable = (*TerminalView)(nil)
+)
 
 // NewTerminalView creates a terminal with a 80x24 default grid.
 func NewTerminalView(fontSize float32) *TerminalView {
@@ -87,6 +105,10 @@ func (t *TerminalView) Scrolled(ev *fyne.ScrollEvent) {
 
 // Tapped focuses the terminal so it receives key events.
 func (t *TerminalView) Tapped(*fyne.PointEvent) {
+	t.focus()
+}
+
+func (t *TerminalView) focus() {
 	if t.OnFocus != nil {
 		t.OnFocus()
 	}
@@ -95,8 +117,107 @@ func (t *TerminalView) Tapped(*fyne.PointEvent) {
 	}
 }
 
+// AcceptsTab lets Tab and Shift+Tab reach the shell instead of moving focus.
+func (t *TerminalView) AcceptsTab() bool { return true }
+
 func (t *TerminalView) FocusGained() {}
 func (t *TerminalView) FocusLost()   {}
+
+// MouseDown starts a text selection and focuses the pane, matching normal
+// terminal behaviour without swallowing keyboard focus after a drag.
+func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
+	if ev.Button != desktop.MouseButtonPrimary {
+		return
+	}
+	t.focus()
+	line, col := t.cellAt(ev.Position)
+	t.mu.Lock()
+	t.selecting = true
+	t.hasSelection = false
+	t.selAnchorLine, t.selAnchorCol = line, col
+	t.selCursorLine, t.selCursorCol = line, col
+	t.mu.Unlock()
+	t.Refresh()
+}
+
+func (t *TerminalView) MouseUp(*desktop.MouseEvent) {
+	t.mu.Lock()
+	t.selecting = false
+	t.mu.Unlock()
+}
+
+// Dragged extends the selection to the cell under the pointer.
+func (t *TerminalView) Dragged(ev *fyne.DragEvent) {
+	line, col := t.cellAt(ev.Position)
+	t.mu.Lock()
+	if !t.selecting {
+		t.mu.Unlock()
+		return
+	}
+	t.selCursorLine, t.selCursorCol = line, col
+	t.hasSelection = line != t.selAnchorLine || col != t.selAnchorCol
+	t.mu.Unlock()
+	t.Refresh()
+}
+
+func (t *TerminalView) DragEnd() {
+	t.mu.Lock()
+	t.selecting = false
+	t.mu.Unlock()
+}
+
+func (t *TerminalView) cellAt(pos fyne.Position) (int, int) {
+	cw, ch := t.cellSize()
+	if cw <= 0 || ch <= 0 {
+		return 0, 0
+	}
+	col := int(pos.X / cw)
+	row := int(pos.Y / ch)
+
+	t.mu.Lock()
+	total := t.vt.TotalLines()
+	cols, _ := t.vt.Size()
+	virtual := t.vt.ScrollbackLen() + row - t.offset
+	t.mu.Unlock()
+
+	if total < 1 {
+		total = 1
+	}
+	if virtual < 0 {
+		virtual = 0
+	}
+	if virtual >= total {
+		virtual = total - 1
+	}
+	if col < 0 {
+		col = 0
+	}
+	if col >= cols {
+		col = cols - 1
+	}
+	return virtual, col
+}
+
+func (t *TerminalView) cellSize() (float32, float32) {
+	t.mu.Lock()
+	cw, ch := t.cellW, t.cellH
+	t.mu.Unlock()
+	if cw > 0 && ch > 0 {
+		return cw, ch
+	}
+	cw = fyne.MeasureText("M", t.fontSize, fyne.TextStyle{Monospace: true}).Width
+	ch = fyne.MeasureText("M", t.fontSize, fyne.TextStyle{Monospace: true}).Height
+	if cw <= 0 {
+		cw = t.fontSize * 0.6
+	}
+	if ch <= 0 {
+		ch = t.fontSize * 1.25
+	}
+	t.mu.Lock()
+	t.cellW, t.cellH = cw, ch
+	t.mu.Unlock()
+	return cw, ch
+}
 
 func (t *TerminalView) TypedRune(r rune) {
 	if r < 0x20 || r == 0x7f {
@@ -116,7 +237,7 @@ func (t *TerminalView) TypedKey(ev *fyne.KeyEvent) {
 			if mods&fyne.KeyModifierShift != 0 {
 				switch name {
 				case "C":
-					t.copyAll()
+					t.copySelection()
 					return
 				case "V":
 					t.paste()
@@ -131,7 +252,11 @@ func (t *TerminalView) TypedKey(ev *fyne.KeyEvent) {
 	case fyne.KeyReturn, fyne.KeyEnter:
 		t.send([]byte("\r"))
 	case fyne.KeyTab:
-		t.send([]byte("\t"))
+		if mods&fyne.KeyModifierShift != 0 {
+			t.send([]byte("\x1b[Z"))
+		} else {
+			t.send([]byte("\t"))
+		}
 	case fyne.KeyBackspace:
 		t.send([]byte("\x7f"))
 	case fyne.KeyEscape:
@@ -189,21 +314,189 @@ func (t *TerminalView) TypedKey(ev *fyne.KeyEvent) {
 	}
 }
 
+// TypedShortcut is where Fyne delivers every key press that has a modifier.
+// Without it, Fyne consumes Ctrl+C, Ctrl+V and custom Ctrl+Shift combinations
+// before TypedKey can forward them to the remote shell.
+func (t *TerminalView) TypedShortcut(s fyne.Shortcut) {
+	switch sc := s.(type) {
+	case *fyne.ShortcutCopy:
+		// Ctrl+C on Linux/Windows must interrupt the shell; Cmd+C on macOS and
+		// Ctrl+Insert (Secondary) are copies.
+		if sc.Secondary || runtime.GOOS == "darwin" {
+			t.copySelection()
+			return
+		}
+		t.sendControl('C')
+	case *fyne.ShortcutPaste:
+		// Ctrl+V / Cmd+V and Shift+Insert.
+		t.paste()
+	case *fyne.ShortcutCut:
+		if runtime.GOOS != "darwin" {
+			t.sendControl('X')
+		}
+	case *fyne.ShortcutUndo:
+		t.sendControl('Z')
+	case *fyne.ShortcutRedo:
+		t.sendControl('Y')
+	case *fyne.ShortcutSelectAll:
+		if runtime.GOOS == "darwin" {
+			t.selectAll()
+		} else {
+			t.sendControl('A')
+		}
+	case *desktop.CustomShortcut:
+		t.customShortcut(sc)
+	}
+}
+
+func (t *TerminalView) customShortcut(sc *desktop.CustomShortcut) {
+	key := sc.KeyName
+	mods := sc.Modifier
+	command := mods&fyne.KeyModifierControl != 0
+	if runtime.GOOS == "darwin" {
+		command = mods&fyne.KeyModifierSuper != 0
+	}
+
+	switch {
+	case command && key == fyne.KeyC && mods&fyne.KeyModifierShift != 0:
+		t.copySelection()
+		return
+	case command && key == fyne.KeyV && mods&fyne.KeyModifierShift != 0:
+		t.paste()
+		return
+	case runtime.GOOS == "darwin" && key == fyne.KeyV && mods == fyne.KeyModifierControl:
+		// Cmd+V pastes; Ctrl+V keeps its literal-next meaning on macOS.
+		t.sendControl('V')
+		return
+	case mods&fyne.KeyModifierAlt != 0 && !command:
+		// Alt+key is the usual meta prefix in readline and Emacs.
+		if name := string(key); len(name) == 1 {
+			t.send([]byte("\x1b"))
+			t.send([]byte(strings.ToLower(name)))
+		}
+		return
+	}
+
+	if command {
+		if b, ok := controlByte(key); ok {
+			t.send([]byte{b})
+		}
+	}
+}
+
+func (t *TerminalView) sendControl(letter byte) {
+	if letter >= 'a' && letter <= 'z' {
+		letter -= 'a' - 'A'
+	}
+	if letter < 'A' || letter > 'Z' {
+		return
+	}
+	t.send([]byte{letter - 'A' + 1})
+}
+
+func controlByte(key fyne.KeyName) (byte, bool) {
+	name := string(key)
+	if len(name) != 1 {
+		return 0, false
+	}
+	c := name[0]
+	switch {
+	case c >= 'a' && c <= 'z':
+		return c - 'a' + 1, true
+	case c >= 'A' && c <= 'Z':
+		return c - 'A' + 1, true
+	case c == ' ' || c == '@':
+		return 0, true
+	case c == '[':
+		return 0x1b, true
+	case c == '\\':
+		return 0x1c, true
+	case c == ']':
+		return 0x1d, true
+	case c == '^':
+		return 0x1e, true
+	case c == '_':
+		return 0x1f, true
+	case c == '?':
+		return 0x7f, true
+	}
+	return 0, false
+}
+
 func (t *TerminalView) send(p []byte) {
 	if t.OnInput != nil {
 		t.OnInput(p)
 	}
 }
 
-func (t *TerminalView) copyAll() {
+func (t *TerminalView) copySelection() {
+	text := t.selectedText()
+	if text == "" {
+		// No selection: the historical behaviour is copy-all, but strip the
+		// newline padding from the empty bottom of the screen.
+		t.mu.Lock()
+		text = strings.TrimRight(t.vt.PlainText(), "\n")
+		t.mu.Unlock()
+	}
+	if text == "" {
+		return
+	}
 	app := fyne.CurrentApp()
 	if app == nil || app.Clipboard() == nil {
 		return
 	}
-	t.mu.Lock()
-	text := t.vt.PlainText()
-	t.mu.Unlock()
 	app.Clipboard().SetContent(text)
+}
+
+func (t *TerminalView) selectedText() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if !t.hasSelection {
+		return ""
+	}
+	startLine, startCol, endLine, endCol := t.selectionBounds()
+	from := t.runeColumn(startLine, startCol)
+	to := t.runeColumn(endLine, endCol) + 1
+	return t.vt.TextInRange(startLine, from, endLine, to)
+}
+
+// selectionBounds normalises anchor and cursor into inclusive coordinates.
+// The caller must hold t.mu.
+func (t *TerminalView) selectionBounds() (int, int, int, int) {
+	startLine, startCol := t.selAnchorLine, t.selAnchorCol
+	endLine, endCol := t.selCursorLine, t.selCursorCol
+	if startLine > endLine || (startLine == endLine && startCol > endCol) {
+		startLine, endLine = endLine, startLine
+		startCol, endCol = endCol, startCol
+	}
+	return startLine, startCol, endLine, endCol
+}
+
+// runeColumn converts a cell column to the rune index used by TextInRange.
+// Wide characters occupy two cells but only one rune.
+func (t *TerminalView) runeColumn(line, cell int) int {
+	if cell <= 0 {
+		return 0
+	}
+	cells := t.vt.LineAt(line)
+	n := 0
+	for x := 0; x < cell && x < len(cells); x++ {
+		if cells[x].Rune != 0 {
+			n++
+		}
+	}
+	return n
+}
+
+func (t *TerminalView) selectAll() {
+	t.mu.Lock()
+	total := t.vt.TotalLines()
+	cols, _ := t.vt.Size()
+	t.selAnchorLine, t.selAnchorCol = 0, 0
+	t.selCursorLine, t.selCursorCol = total-1, cols-1
+	t.hasSelection = total > 0
+	t.mu.Unlock()
+	t.Refresh()
 }
 
 func (t *TerminalView) paste() {
@@ -212,9 +505,10 @@ func (t *TerminalView) paste() {
 		return
 	}
 	text := app.Clipboard().Content()
-	if text != "" {
-		t.send([]byte(text))
+	if text == "" {
+		return
 	}
+	t.send([]byte(text))
 }
 
 // CreateRenderer implements fyne.Widget.
@@ -227,6 +521,11 @@ func (t *TerminalView) CreateRenderer() fyne.WidgetRenderer {
 		txt.TextStyle = fyne.TextStyle{Monospace: true}
 		txt.Hide()
 		r.runs = append(r.runs, txt)
+	}
+	for i := 0; i < maxPoolRows; i++ {
+		sel := canvas.NewRectangle(theme.Color(theme.ColorNameSelection))
+		sel.Hide()
+		r.selection = append(r.selection, sel)
 	}
 	r.cursor.FillColor = terminalCursorColor()
 	r.cursor.Hide()
@@ -252,20 +551,24 @@ type termRun struct {
 }
 
 type termRenderer struct {
-	w      *TerminalView
-	bg     *canvas.Rectangle
-	cursor *canvas.Rectangle
-	runs   []*canvas.Text
-	cellW  float32
-	cellH  float32
-	cols   int
-	rows   int
+	w         *TerminalView
+	bg        *canvas.Rectangle
+	cursor    *canvas.Rectangle
+	selection []*canvas.Rectangle
+	runs      []*canvas.Text
+	cellW     float32
+	cellH     float32
+	cols      int
+	rows      int
 }
 
 func (r *termRenderer) Layout(size fyne.Size) {
 	r.bg.Resize(size)
+	cw, ch := r.cellWidth(), r.cellHeight()
 	r.w.mu.Lock()
 	r.w.size = size
+	r.w.cellW = cw
+	r.w.cellH = ch
 	r.w.mu.Unlock()
 	r.rebuild(size)
 }
@@ -288,8 +591,12 @@ func (r *termRenderer) Refresh() {
 }
 
 func (r *termRenderer) Objects() []fyne.CanvasObject {
-	out := make([]fyne.CanvasObject, 0, len(r.runs)+2)
-	out = append(out, r.bg, r.cursor)
+	out := make([]fyne.CanvasObject, 0, len(r.runs)+len(r.selection)+2)
+	out = append(out, r.bg)
+	for _, sel := range r.selection {
+		out = append(out, sel)
+	}
+	out = append(out, r.cursor)
 	for _, run := range r.runs {
 		out = append(out, run)
 	}
@@ -335,6 +642,11 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	offset := r.w.offset
 	sbLen := t.ScrollbackLen()
 	cx, cy, cursorVisible := t.Cursor()
+	hasSelection := r.w.hasSelection
+	selStartLine, selStartCol, selEndLine, selEndCol := 0, 0, 0, 0
+	if hasSelection {
+		selStartLine, selStartCol, selEndLine, selEndCol = r.w.selectionBounds()
+	}
 	r.w.mu.Unlock()
 
 	r.cols, r.rows = cols, rows
@@ -372,6 +684,40 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	}
 	for ; idx < len(r.runs); idx++ {
 		r.runs[idx].Hide()
+	}
+
+	// Selection highlights are drawn under the text so the glyph colours keep
+	// their meaning. One rectangle is enough because a selection is contiguous.
+	selIdx := 0
+	if hasSelection {
+		for y := 0; y < rows && selIdx < len(r.selection); y++ {
+			virtual := sbLen + y - offset
+			if virtual < selStartLine || virtual > selEndLine {
+				continue
+			}
+			from, to := 0, cols-1
+			if virtual == selStartLine {
+				from = selStartCol
+			}
+			if virtual == selEndLine {
+				to = selEndCol
+			}
+			from = clampInt(from, 0, cols-1)
+			to = clampInt(to, 0, cols-1)
+			if from > to {
+				continue
+			}
+			rect := r.selection[selIdx]
+			rect.FillColor = theme.Color(theme.ColorNameSelection)
+			rect.Move(fyne.NewPos(float32(from)*cw, float32(y)*ch))
+			rect.Resize(fyne.NewSize(float32(to-from+1)*cw, ch))
+			rect.Show()
+			rect.Refresh()
+			selIdx++
+		}
+	}
+	for ; selIdx < len(r.selection); selIdx++ {
+		r.selection[selIdx].Hide()
 	}
 
 	// Cursor block.

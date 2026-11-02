@@ -144,5 +144,7 @@ interface keeps the selected theme. **Font size** is applied to new sessions.
 
 Text copied by a remote program through **OSC 52** is written to the system
 clipboard, so agents like Claude Code and Codex, which copy through the
-terminal, work without mouse selection. `Ctrl+Shift+C` copies the whole buffer
-and `Ctrl+Shift+V` pastes.
+terminal, work without mouse selection. Drag with the mouse to select text.
+`Ctrl+Shift+C` (or `Ctrl+Insert`, `Cmd+C` on macOS) copies the selection, or the
+whole buffer when nothing is selected. `Ctrl+V`, `Ctrl+Shift+V` and
+`Shift+Insert` paste. `Ctrl+C` still interrupts the running command.

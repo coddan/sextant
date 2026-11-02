@@ -1,7 +1,9 @@
 package gui
 
 import (
+	"fyne.io/fyne/v2/driver/desktop"
 	"image/color"
+	"strings"
 	"testing"
 
 	"fyne.io/fyne/v2"
@@ -51,5 +53,59 @@ func TestTerminalRendererTracksTheme(t *testing.T) {
 	r.Refresh()
 	if got, want := r.bg.FillColor, theme.Color(theme.ColorNameBackground); got != want {
 		t.Fatalf("dark background = %v, want %v", got, want)
+	}
+}
+
+func newShortcutView(t *testing.T) (*TerminalView, fyne.App, *[]byte) {
+	t.Helper()
+	a := test.NewApp()
+	t.Cleanup(a.Quit)
+	v := NewTerminalView(13)
+	var got []byte
+	v.OnInput = func(p []byte) { got = append(got, p...) }
+	return v, a, &got
+}
+
+func TestTerminalShortcutsReachShell(t *testing.T) {
+	v, _, got := newShortcutView(t)
+	v.TypedShortcut(&fyne.ShortcutCopy{})
+	v.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyD, Modifier: fyne.KeyModifierControl})
+	if string(*got) != "\x03\x04" {
+		t.Fatalf("sent %q, want ^C^D", *got)
+	}
+}
+
+func TestTerminalPasteShortcuts(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	a.Clipboard().SetContent("hello")
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	v.TypedShortcut(&desktop.CustomShortcut{KeyName: fyne.KeyV, Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift})
+	if string(*got) != "hellohello" {
+		t.Fatalf("sent %q", *got)
+	}
+}
+
+func TestTerminalCopyAllAndSelection(t *testing.T) {
+	v, a, _ := newShortcutView(t)
+	v.vt.Write([]byte("hello world\r\nsecond"))
+	copyKey := &desktop.CustomShortcut{KeyName: fyne.KeyC, Modifier: fyne.KeyModifierControl | fyne.KeyModifierShift}
+	v.TypedShortcut(copyKey)
+	if c := a.Clipboard().Content(); !strings.Contains(c, "hello world") || !strings.Contains(c, "second") {
+		t.Fatalf("copy-all = %q", c)
+	}
+	_, rows := v.vt.Size()
+	line := v.vt.TotalLines() - rows
+	v.hasSelection = true
+	v.selAnchorLine, v.selAnchorCol = line, 6
+	v.selCursorLine, v.selCursorCol = line, 10
+	v.TypedShortcut(copyKey)
+	if c := a.Clipboard().Content(); c != "world" {
+		t.Fatalf("selection copy = %q", c)
+	}
+}
+
+func TestTerminalAcceptsTab(t *testing.T) {
+	if !NewTerminalView(13).AcceptsTab() {
+		t.Fatal("tab must reach the shell")
 	}
 }
