@@ -51,10 +51,11 @@ type TerminalView struct {
 }
 
 var (
-	_ fyne.Shortcutable = (*TerminalView)(nil)
-	_ fyne.Tabbable     = (*TerminalView)(nil)
-	_ fyne.Draggable    = (*TerminalView)(nil)
-	_ desktop.Mouseable = (*TerminalView)(nil)
+	_ fyne.Shortcutable      = (*TerminalView)(nil)
+	_ fyne.Tabbable          = (*TerminalView)(nil)
+	_ fyne.Draggable         = (*TerminalView)(nil)
+	_ desktop.Mouseable      = (*TerminalView)(nil)
+	_ fyne.SecondaryTappable = (*TerminalView)(nil)
 )
 
 // NewTerminalView creates a terminal with a 80x24 default grid.
@@ -108,6 +109,12 @@ func (t *TerminalView) Tapped(*fyne.PointEvent) {
 	t.focus()
 }
 
+// TappedSecondary pastes, as PuTTY and SecureCRT do by default.
+func (t *TerminalView) TappedSecondary(*fyne.PointEvent) {
+	t.focus()
+	t.paste()
+}
+
 func (t *TerminalView) focus() {
 	if t.OnFocus != nil {
 		t.OnFocus()
@@ -141,9 +148,18 @@ func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
 }
 
 func (t *TerminalView) MouseUp(*desktop.MouseEvent) {
+	t.finishSelection()
+}
+
+// finishSelection ends a drag and copies the selection (copy on select).
+func (t *TerminalView) finishSelection() {
 	t.mu.Lock()
+	was := t.selecting && t.hasSelection
 	t.selecting = false
 	t.mu.Unlock()
+	if was {
+		t.copySelection()
+	}
 }
 
 // Dragged extends the selection to the cell under the pointer.
@@ -161,9 +177,7 @@ func (t *TerminalView) Dragged(ev *fyne.DragEvent) {
 }
 
 func (t *TerminalView) DragEnd() {
-	t.mu.Lock()
-	t.selecting = false
-	t.mu.Unlock()
+	t.finishSelection()
 }
 
 func (t *TerminalView) cellAt(pos fyne.Position) (int, int) {

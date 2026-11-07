@@ -6,6 +6,13 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-11-07
+
+### Added
+
+- **Mouse copy and paste.** Like PuTTY and SecureCRT, releasing a drag selection
+  copies it to the clipboard and right-click pastes.
+
 ## [0.2.1] — 2026-11-02
 
 ### Fixed
@@ -122,7 +129,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/coddan/sextant/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/coddan/sextant/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/coddan/sextant/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/coddan/sextant/releases/tag/v0.1.1
