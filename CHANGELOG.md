@@ -6,6 +6,17 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-11-10
+
+### Added
+
+- **Terminal scrollbar.** A draggable scrollbar appears when there is scrollback.
+
+### Fixed
+
+- **Mouse wheel scrolling** no longer snaps back to the bottom whenever output
+  arrives; typing or pasting returns to the live screen.
+
 ## [0.2.2] — 2026-11-07
 
 ### Added
@@ -129,7 +140,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/coddan/sextant/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/coddan/sextant/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/coddan/sextant/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/coddan/sextant/compare/v0.1.1...v0.2.0

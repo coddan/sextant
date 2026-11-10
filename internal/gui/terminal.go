@@ -20,6 +20,8 @@ import (
 const (
 	maxRunPerRow = 16
 	maxPoolRows  = 80
+
+	scrollBarWidth float32 = 12
 )
 
 // TerminalView is a canvas widget that renders the VT emulator and forwards
@@ -44,6 +46,7 @@ type TerminalView struct {
 	// Selection is stored in virtual-line and cell coordinates so it keeps its
 	// meaning while the view scrolls or new output arrives. End positions are
 	// inclusive for rendering and converted to exclusive rune offsets on copy.
+	sbDrag                      bool
 	selecting                   bool
 	hasSelection                bool
 	selAnchorLine, selAnchorCol int
@@ -90,8 +93,12 @@ func (t *TerminalView) SetClosed() {
 // Write feeds remote output into the emulator. Call from the UI goroutine.
 func (t *TerminalView) Write(p []byte) {
 	t.mu.Lock()
+	before := t.vt.ScrollbackLen()
 	t.vt.Write(p)
-	t.offset = 0
+	// Keep the scrolled-back view anchored while new output arrives.
+	if t.offset > 0 {
+		t.offset = clampInt(t.offset+t.vt.ScrollbackLen()-before, 0, t.vt.ScrollbackLen())
+	}
 	t.mu.Unlock()
 	t.Refresh()
 }
@@ -137,6 +144,13 @@ func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
 		return
 	}
 	t.focus()
+	if ev.Position.X >= t.Size().Width-scrollBarWidth {
+		t.mu.Lock()
+		t.sbDrag = true
+		t.mu.Unlock()
+		t.scrollToY(ev.Position.Y)
+		return
+	}
 	line, col := t.cellAt(ev.Position)
 	t.mu.Lock()
 	t.selecting = true
@@ -148,7 +162,33 @@ func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
 }
 
 func (t *TerminalView) MouseUp(*desktop.MouseEvent) {
+	t.mu.Lock()
+	t.sbDrag = false
+	t.mu.Unlock()
 	t.finishSelection()
+}
+
+// scrollToY maps a pointer height on the scrollbar to a scroll offset.
+func (t *TerminalView) scrollToY(y float32) {
+	t.mu.Lock()
+	sb := t.vt.ScrollbackLen()
+	h := t.size.Height
+	if sb > 0 && h > 0 {
+		frac := clampF(y/h, 0, 1)
+		t.offset = clampInt(sb-int(frac*float32(sb)+0.5), 0, sb)
+	}
+	t.mu.Unlock()
+	t.Refresh()
+}
+
+func clampF(v, lo, hi float32) float32 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
 }
 
 // finishSelection ends a drag and copies the selection (copy on select).
@@ -164,6 +204,13 @@ func (t *TerminalView) finishSelection() {
 
 // Dragged extends the selection to the cell under the pointer.
 func (t *TerminalView) Dragged(ev *fyne.DragEvent) {
+	t.mu.Lock()
+	drag := t.sbDrag
+	t.mu.Unlock()
+	if drag {
+		t.scrollToY(ev.Position.Y)
+		return
+	}
 	line, col := t.cellAt(ev.Position)
 	t.mu.Lock()
 	if !t.selecting {
@@ -177,6 +224,9 @@ func (t *TerminalView) Dragged(ev *fyne.DragEvent) {
 }
 
 func (t *TerminalView) DragEnd() {
+	t.mu.Lock()
+	t.sbDrag = false
+	t.mu.Unlock()
 	t.finishSelection()
 }
 
@@ -438,6 +488,13 @@ func controlByte(key fyne.KeyName) (byte, bool) {
 }
 
 func (t *TerminalView) send(p []byte) {
+	t.mu.Lock()
+	snap := t.offset != 0
+	t.offset = 0
+	t.mu.Unlock()
+	if snap {
+		t.Refresh()
+	}
 	if t.OnInput != nil {
 		t.OnInput(p)
 	}
@@ -543,6 +600,10 @@ func (t *TerminalView) CreateRenderer() fyne.WidgetRenderer {
 	}
 	r.cursor.FillColor = terminalCursorColor()
 	r.cursor.Hide()
+	r.sbTrack = canvas.NewRectangle(color.Transparent)
+	r.sbThumb = canvas.NewRectangle(color.Transparent)
+	r.sbTrack.Hide()
+	r.sbThumb.Hide()
 	return r
 }
 
@@ -568,6 +629,8 @@ type termRenderer struct {
 	w         *TerminalView
 	bg        *canvas.Rectangle
 	cursor    *canvas.Rectangle
+	sbTrack   *canvas.Rectangle
+	sbThumb   *canvas.Rectangle
 	selection []*canvas.Rectangle
 	runs      []*canvas.Text
 	cellW     float32
@@ -605,7 +668,7 @@ func (r *termRenderer) Refresh() {
 }
 
 func (r *termRenderer) Objects() []fyne.CanvasObject {
-	out := make([]fyne.CanvasObject, 0, len(r.runs)+len(r.selection)+2)
+	out := make([]fyne.CanvasObject, 0, len(r.runs)+len(r.selection)+4)
 	out = append(out, r.bg)
 	for _, sel := range r.selection {
 		out = append(out, sel)
@@ -614,6 +677,7 @@ func (r *termRenderer) Objects() []fyne.CanvasObject {
 	for _, run := range r.runs {
 		out = append(out, run)
 	}
+	out = append(out, r.sbTrack, r.sbThumb)
 	return out
 }
 
@@ -664,6 +728,7 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	r.w.mu.Unlock()
 
 	r.cols, r.rows = cols, rows
+	r.updateScrollBar(size, sbLen, rows, offset)
 	fgDefault := theme.Color(theme.ColorNameForeground)
 	bgDefault := theme.Color(theme.ColorNameBackground)
 	r.bg.FillColor = bgDefault
@@ -951,4 +1016,33 @@ func composeVisible(t *vterm.Terminal, max int) string {
 		text = text[len(text)-max:]
 	}
 	return fmt.Sprintf("%q", text)
+}
+
+func (r *termRenderer) updateScrollBar(size fyne.Size, sbLen, rows, offset int) {
+	if sbLen <= 0 {
+		r.sbTrack.Hide()
+		r.sbThumb.Hide()
+		return
+	}
+	total := float32(sbLen + rows)
+	thumbH := maxF(24, size.Height*float32(rows)/total)
+	top := (size.Height - thumbH) * float32(sbLen-offset) / float32(sbLen)
+	fg := theme.Color(theme.ColorNameForeground)
+	r.sbTrack.FillColor = withAlpha(fg, 24)
+	r.sbThumb.FillColor = withAlpha(fg, 110)
+	x := size.Width - scrollBarWidth
+	r.sbTrack.Move(fyne.NewPos(x, 0))
+	r.sbTrack.Resize(fyne.NewSize(scrollBarWidth, size.Height))
+	r.sbThumb.Move(fyne.NewPos(x+2, top))
+	r.sbThumb.Resize(fyne.NewSize(scrollBarWidth-4, thumbH))
+	r.sbTrack.Show()
+	r.sbThumb.Show()
+	r.sbTrack.Refresh()
+	r.sbThumb.Refresh()
+}
+
+func withAlpha(c color.Color, a uint8) color.Color {
+	n := color.NRGBAModel.Convert(c).(color.NRGBA)
+	n.A = a
+	return n
 }
