@@ -103,10 +103,94 @@ func (t *TerminalView) Write(p []byte) {
 	t.Refresh()
 }
 
-// Scrollback returns the current scroll offset.
+// Scrolled handles the wheel: programs with mouse reporting get wheel events,
+// the alternate screen (vim, less) gets cursor keys, and the shell's scrollback
+// scrolls locally. This mirrors PuTTY and xterm.
 func (t *TerminalView) Scrolled(ev *fyne.ScrollEvent) {
+	if ev.Scrolled.DY == 0 {
+		return
+	}
+	up := ev.Scrolled.DY > 0
+	steps := int(ev.Scrolled.DY)
+	if steps < 0 {
+		steps = -steps
+	}
+	if steps < 1 {
+		steps = 1
+	}
+	if steps > 5 {
+		steps = 5
+	}
+
 	t.mu.Lock()
-	t.offset = clampInt(t.offset+int(ev.Scrolled.DY)*3, 0, t.vt.ScrollbackLen())
+	mouse := t.vt.MouseMode != 0
+	alt := t.vt.AltActive()
+	t.mu.Unlock()
+
+	switch {
+	case mouse:
+		col, row := t.cellAt(ev.Position)
+		for i := 0; i < steps; i++ {
+			t.sendWheel(up, col, row)
+		}
+	case alt:
+		seq := "\x1b[B"
+		if up {
+			seq = "\x1b[A"
+		}
+		for i := 0; i < steps*3; i++ {
+			t.send([]byte(seq))
+		}
+	default:
+		t.mu.Lock()
+		t.offset = clampInt(t.offset+int(ev.Scrolled.DY)*3, 0, t.vt.ScrollbackLen())
+		t.mu.Unlock()
+		t.Refresh()
+	}
+}
+
+// sendWheel reports one wheel notch to a program using mouse reporting.
+func (t *TerminalView) sendWheel(up bool, col, row int) {
+	t.mu.Lock()
+	sgr := t.vt.MouseSGR
+	t.mu.Unlock()
+	t.send(mouseWheelSequence(up, col, row, sgr))
+}
+
+// mouseWheelSequence encodes a wheel press and release (buttons 64/65).
+func mouseWheelSequence(up bool, col, row int, sgr bool) []byte {
+	button := 65
+	if up {
+		button = 64
+	}
+	if sgr {
+		return []byte(fmt.Sprintf("\x1b[<%d;%d;%dM\x1b[<%d;%d;%dm", button, col+1, row+1, button, col+1, row+1))
+	}
+	// X10: press uses the button, release is always button 3.
+	return []byte{0x1b, '[', 'M', byte(32 + button), byte(32 + col + 1), byte(32 + row + 1),
+		0x1b, '[', 'M', 32 + 3, byte(32 + col + 1), byte(32 + row + 1)}
+}
+
+// pageScroll moves ten lines, or forwards PageUp/PageDown to the alternate
+// screen so pagers and editors handle it themselves.
+func (t *TerminalView) pageScroll(up bool) {
+	t.mu.Lock()
+	alt := t.vt.AltActive()
+	t.mu.Unlock()
+	if alt {
+		seq := "\x1b[6~"
+		if up {
+			seq = "\x1b[5~"
+		}
+		t.send([]byte(seq))
+		return
+	}
+	t.mu.Lock()
+	delta := 10
+	if up {
+		delta = -10
+	}
+	t.offset = clampInt(t.offset+delta, 0, t.vt.ScrollbackLen())
 	t.mu.Unlock()
 	t.Refresh()
 }
@@ -342,15 +426,9 @@ func (t *TerminalView) TypedKey(ev *fyne.KeyEvent) {
 	case fyne.KeyEnd:
 		t.send([]byte("\x1b[F"))
 	case fyne.KeyPageUp:
-		t.mu.Lock()
-		t.offset = clampInt(t.offset+10, 0, t.vt.ScrollbackLen())
-		t.mu.Unlock()
-		t.Refresh()
+		t.pageScroll(true)
 	case fyne.KeyPageDown:
-		t.mu.Lock()
-		t.offset = clampInt(t.offset-10, 0, t.vt.ScrollbackLen())
-		t.mu.Unlock()
-		t.Refresh()
+		t.pageScroll(false)
 	case fyne.KeyF1:
 		t.send([]byte("\x1bOP"))
 	case fyne.KeyF2:
@@ -718,6 +796,11 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	}
 	t := r.w.vt
 	offset := r.w.offset
+	if t.AltActive() {
+		// The alternate screen has no scrollback; show it live.
+		offset = 0
+		r.w.offset = 0
+	}
 	sbLen := t.ScrollbackLen()
 	cx, cy, cursorVisible := t.Cursor()
 	hasSelection := r.w.hasSelection

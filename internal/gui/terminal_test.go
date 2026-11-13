@@ -109,3 +109,28 @@ func TestTerminalAcceptsTab(t *testing.T) {
 		t.Fatal("tab must reach the shell")
 	}
 }
+
+func TestMouseWheelSequence(t *testing.T) {
+	if got, want := string(mouseWheelSequence(true, 4, 2, true)), "\x1b[<64;5;3M\x1b[<64;5;3m"; got != want {
+		t.Fatalf("SGR wheel up = %q, want %q", got, want)
+	}
+	want := []byte{0x1b, '[', 'M', 32 + 65, 32 + 1, 32 + 1, 0x1b, '[', 'M', 32 + 3, 32 + 1, 32 + 1}
+	if got := mouseWheelSequence(false, 0, 0, false); string(got) != string(want) {
+		t.Fatalf("X10 wheel down = %q, want %q", got, want)
+	}
+}
+
+func TestWheelScrollsLocalScrollback(t *testing.T) {
+	v, _, got := newShortcutView(t)
+	v.vt.Resize(80, 24)
+	for i := 0; i < 100; i++ {
+		v.vt.Write([]byte("line\r\n"))
+	}
+	v.Scrolled(&fyne.ScrollEvent{Scrolled: fyne.NewDelta(0, 3)})
+	if v.offset == 0 {
+		t.Fatal("wheel up did not scroll back")
+	}
+	if len(*got) != 0 {
+		t.Fatalf("wheel sent %q to a shell without mouse reporting", *got)
+	}
+}
