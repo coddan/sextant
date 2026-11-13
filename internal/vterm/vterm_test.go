@@ -152,3 +152,16 @@ func TestOSCTitle(t *testing.T) {
 		t.Fatal("unreachable")
 	}
 }
+
+func TestScrollbackDroppedCount(t *testing.T) {
+	vt := New(10, 3, 5)
+	for i := 0; i < 12; i++ {
+		vt.Write([]byte("line\r\n"))
+	}
+	if got := vt.ScrollbackLen(); got != 5 {
+		t.Fatalf("scrollback = %d, want 5", got)
+	}
+	if got := vt.Dropped(); got == 0 {
+		t.Fatal("dropped lines were not counted")
+	}
+}

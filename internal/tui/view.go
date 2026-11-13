@@ -677,6 +677,6 @@ var _ = model.MonitorSSH
 // pasteConfirmView draws the multi-line paste question.
 func (m *Model) pasteConfirmView() string {
 	body := m.tr(i18n.TerminalPasteConfirmBody, termutil.PasteLines(m.pastePending))
-	body += "\n\n" + m.tr(i18n.HostKeyAccept) + " [y]    " + m.tr(i18n.HostKeyReject) + " [n]"
+	body += "\n\n" + m.tr(i18n.TerminalPasteAction) + " [y]    " + m.tr(i18n.CommonCancel) + " [n]"
 	return boxStyle.Width(minInt(m.width-4, 72)).Render(body)
 }

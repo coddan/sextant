@@ -101,8 +101,10 @@ keys to OpenSSH format.
   "terminal": {
     "font_family": "",           // any installed font
     "font_size": 14,
-    "scrollback_lines": 10000,
+    "scrollback_lines": 10000,   // lines kept per session
+    "line_height": 1.2,          // desktop line spacing; 1.2 keeps the default
     "sudo_autofill": false,      // fill sudo's prompt from the host password
+    "copy_on_select": true,      // copy a drag selection on release
     "bracketed_paste": true,     // honour a program's bracketed-paste request
     "force_bracketed_paste": false, // wrap even if the program did not ask
     "confirm_multiline_paste": true // ask before pasting several lines

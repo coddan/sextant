@@ -154,6 +154,7 @@ func (p *settingsPanel) rows(m *Model) []settingRow {
 		{"terminal.bracketed", m.tr(i18n.TerminalBracketedPaste), boolText(s.Terminal.BracketedPaste)},
 		{"terminal.forcebracketed", m.tr(i18n.TerminalForceBracketed), boolText(s.Terminal.ForceBracketedPaste)},
 		{"terminal.confirmpaste", m.tr(i18n.TerminalConfirmPaste), boolText(s.Terminal.ConfirmPaste)},
+		{"terminal.scrollback", m.tr(i18n.TerminalScrollback), strconv.Itoa(s.Terminal.Scrollback)},
 		{"general.confirmclose", m.tr(i18n.SettingsConfirmCloseTab), boolText(s.General.ConfirmCloseTab)},
 		{"ui.showip", m.tr(i18n.SettingsShowIP), boolText(s.UI.ShowIP)},
 		{"general.refresh", m.tr(i18n.SettingsRefreshInterval), strconv.Itoa(s.General.RefreshIntervalSeconds)},
@@ -225,6 +226,11 @@ func (p *settingsPanel) handle(key tea.KeyMsg, m *Model) (changed bool, err erro
 	case "terminal.confirmpaste":
 		if isToggleKey(key) {
 			s.Terminal.ConfirmPaste = !s.Terminal.ConfirmPaste
+			return true, nil
+		}
+	case "terminal.scrollback":
+		s.Terminal.Scrollback = clampInt(s.Terminal.Scrollback+delta*500, 100, 1000000)
+		if delta != 0 {
 			return true, nil
 		}
 	case "general.confirmclose":

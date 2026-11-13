@@ -175,6 +175,9 @@ type settingsView struct {
 	bracketed      *widget.Check
 	forceBracketed *widget.Check
 	confirmPaste   *widget.Check
+	copyOnSelect   *widget.Check
+	scrollback     *widget.Entry
+	lineHeight     *widget.Entry
 	showIP         *widget.Check
 	collectMetrics *widget.Check
 	refreshSec     *widget.Entry
@@ -211,6 +214,9 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 	v.bracketed = widget.NewCheck(g.tr.T(i18n.TerminalBracketedPaste), nil)
 	v.forceBracketed = widget.NewCheck(g.tr.T(i18n.TerminalForceBracketed), nil)
 	v.confirmPaste = widget.NewCheck(g.tr.T(i18n.TerminalConfirmPaste), nil)
+	v.copyOnSelect = widget.NewCheck(g.tr.T(i18n.TerminalCopyOnSelect), nil)
+	v.scrollback = widget.NewEntry()
+	v.lineHeight = widget.NewEntry()
 	v.showIP = widget.NewCheck(g.tr.T(i18n.SettingsShowIP), nil)
 	v.collectMetrics = widget.NewCheck(g.tr.T(i18n.SettingsCollectMetrics), nil)
 	v.fontFamily = widget.NewEntry()
@@ -228,6 +234,9 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 		widget.NewFormItem("", v.bracketed),
 		widget.NewFormItem("", v.forceBracketed),
 		widget.NewFormItem("", v.confirmPaste),
+		widget.NewFormItem("", v.copyOnSelect),
+		widget.NewFormItem(g.tr.T(i18n.TerminalScrollback), v.scrollback),
+		widget.NewFormItem(g.tr.T(i18n.TerminalLineHeight), v.lineHeight),
 		widget.NewFormItem("", v.showIP),
 		widget.NewFormItem(g.tr.T(i18n.SettingsRefreshInterval), v.refreshSec),
 		widget.NewFormItem("", v.collectMetrics),
@@ -268,6 +277,9 @@ func (v *settingsView) refresh() {
 	v.bracketed.SetChecked(s.Terminal.BracketedPaste)
 	v.forceBracketed.SetChecked(s.Terminal.ForceBracketedPaste)
 	v.confirmPaste.SetChecked(s.Terminal.ConfirmPaste)
+	v.copyOnSelect.SetChecked(s.Terminal.CopyOnSelect)
+	v.scrollback.SetText(strconv.Itoa(s.Terminal.Scrollback))
+	v.lineHeight.SetText(strconv.FormatFloat(s.Terminal.LineHeight, 'f', -1, 64))
 	v.showIP.SetChecked(s.UI.ShowIP)
 	v.collectMetrics.SetChecked(!s.General.MetricsDisabled)
 	v.refreshSec.SetText(strconv.Itoa(s.General.RefreshIntervalSeconds))
@@ -298,6 +310,11 @@ func (v *settingsView) apply() {
 	s.Terminal.BracketedPaste = v.bracketed.Checked
 	s.Terminal.ForceBracketedPaste = v.forceBracketed.Checked
 	s.Terminal.ConfirmPaste = v.confirmPaste.Checked
+	s.Terminal.CopyOnSelect = v.copyOnSelect.Checked
+	s.Terminal.Scrollback = clampInt(atoiDefault(v.scrollback.Text, s.Terminal.Scrollback), 100, 1000000)
+	if lh, err := strconv.ParseFloat(strings.TrimSpace(v.lineHeight.Text), 64); err == nil && lh >= 0.8 && lh <= 3 {
+		s.Terminal.LineHeight = lh
+	}
 	s.UI.ShowIP = v.showIP.Checked
 	s.General.MetricsDisabled = !v.collectMetrics.Checked
 	s.General.RefreshIntervalSeconds = atoiDefault(v.refreshSec.Text, s.General.RefreshIntervalSeconds)
@@ -317,6 +334,7 @@ func (v *settingsView) apply() {
 	}
 	// Paste options are read at paste time, so open sessions pick them up too.
 	for _, session := range v.app.sessions {
+		session.view.CopyOnSelect = s.Terminal.CopyOnSelect
 		session.view.Paste = PasteSettings{
 			Bracketed:      s.Terminal.BracketedPaste,
 			ForceBracketed: s.Terminal.ForceBracketedPaste,

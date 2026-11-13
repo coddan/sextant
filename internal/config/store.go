@@ -133,6 +133,7 @@ func DefaultSettings() Settings {
 			LineHeight:     1.2,
 			Scrollback:     10000,
 			SudoAutofill:   false,
+			CopyOnSelect:   true,
 			BracketedPaste: true,
 			ConfirmPaste:   true,
 		},

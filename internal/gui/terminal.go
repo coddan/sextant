@@ -36,19 +36,23 @@ type TerminalView struct {
 	OnResize func(cols, rows int)
 	OnFocus  func()
 
+	// CopyOnSelect copies a drag selection as soon as it ends.
+	CopyOnSelect bool
+
 	// Paste controls how clipboard text becomes terminal input.
 	Paste PasteSettings
 	// ConfirmPaste, when set, asks the user before a multi-line paste. The
 	// callback must call proceed to send the text.
 	ConfirmPaste func(lines int, proceed func())
 
-	mu       sync.Mutex
-	size     fyne.Size
-	fontSize float32
-	cellW    float32
-	cellH    float32
-	offset   int
-	closed   bool
+	mu         sync.Mutex
+	size       fyne.Size
+	fontSize   float32
+	lineHeight float32
+	cellW      float32
+	cellH      float32
+	offset     int
+	closed     bool
 
 	// Selection is stored in virtual-line and cell coordinates so it keeps its
 	// meaning while the view scrolls or new output arrives. End positions are
@@ -73,14 +77,24 @@ var (
 	_ fyne.SecondaryTappable = (*TerminalView)(nil)
 )
 
-// NewTerminalView creates a terminal with a 80x24 default grid.
+// NewTerminalView creates a terminal with an 80x24 default grid.
 func NewTerminalView(fontSize float32) *TerminalView {
+	return NewTerminalViewWithOptions(fontSize, 10000, 0)
+}
+
+// NewTerminalViewWithOptions creates a terminal using the stored settings.
+// A zero lineHeight keeps Fyne's measured line height.
+func NewTerminalViewWithOptions(fontSize float32, scrollback int, lineHeight float32) *TerminalView {
 	if fontSize <= 0 {
 		fontSize = 14
 	}
+	if scrollback <= 0 {
+		scrollback = 10000
+	}
 	t := &TerminalView{
-		vt:       vterm.New(80, 24, 10000),
-		fontSize: fontSize,
+		vt:         vterm.New(80, 24, scrollback),
+		fontSize:   fontSize,
+		lineHeight: lineHeight,
 	}
 	t.ExtendBaseWidget(t)
 	t.vt.OnClipboard = func(s string) {
@@ -105,11 +119,14 @@ func (t *TerminalView) SetClosed() {
 // Write feeds remote output into the emulator. Call from the UI goroutine.
 func (t *TerminalView) Write(p []byte) {
 	t.mu.Lock()
-	before := t.vt.ScrollbackLen()
+	before, droppedBefore := t.vt.ScrollbackLen(), t.vt.Dropped()
 	t.vt.Write(p)
-	// Keep the scrolled-back view anchored while new output arrives.
+	// Keep the scrolled-back view anchored while new output arrives, including
+	// lines that fall off the end of a full scrollback.
 	if t.offset > 0 {
-		t.offset = clampInt(t.offset+t.vt.ScrollbackLen()-before, 0, t.vt.ScrollbackLen())
+		grew := t.vt.ScrollbackLen() - before
+		dropped := t.vt.Dropped() - droppedBefore
+		t.offset = clampInt(t.offset+grew+dropped, 0, t.vt.ScrollbackLen())
 	}
 	t.mu.Unlock()
 	t.Refresh()
@@ -425,8 +442,9 @@ func (t *TerminalView) finishSelection() {
 	t.mu.Lock()
 	was := t.selecting && t.hasSelection
 	t.selecting = false
+	copyOnSelect := t.CopyOnSelect
 	t.mu.Unlock()
-	if was {
+	if was && copyOnSelect {
 		t.copySelection()
 	}
 }
@@ -979,10 +997,18 @@ func (r *termRenderer) cellWidth() float32 {
 
 func (r *termRenderer) cellHeight() float32 {
 	if r.cellH == 0 {
-		r.cellH = fyne.MeasureText("M", r.w.fontSize, fyne.TextStyle{Monospace: true}).Height
-		if r.cellH <= 0 {
-			r.cellH = r.w.fontSize * 1.25
+		h := fyne.MeasureText("M", r.w.fontSize, fyne.TextStyle{Monospace: true}).Height
+		if h <= 0 {
+			h = r.w.fontSize * 1.25
 		}
+		r.w.mu.Lock()
+		lineHeight := r.w.lineHeight
+		r.w.mu.Unlock()
+		// 1.2 was the historical default, so keep it as the measured baseline.
+		if lineHeight > 0 {
+			h *= lineHeight / 1.2
+		}
+		r.cellH = h
 	}
 	return r.cellH
 }

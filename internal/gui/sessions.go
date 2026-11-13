@@ -105,8 +105,10 @@ func (g *App) openSession(h model.Host, shell *sshclient.Shell, cancel context.C
 		return
 	}
 
-	view := NewTerminalView(float32(g.rt.Store.Settings.Terminal.FontSize))
 	termCfg := g.rt.Store.Settings.Terminal
+	view := NewTerminalViewWithOptions(
+		float32(termCfg.FontSize), termCfg.Scrollback, float32(termCfg.LineHeight))
+	view.CopyOnSelect = termCfg.CopyOnSelect
 	view.Paste = PasteSettings{
 		Bracketed:      termCfg.BracketedPaste,
 		ForceBracketed: termCfg.ForceBracketedPaste,

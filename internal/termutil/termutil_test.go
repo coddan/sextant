@@ -75,6 +75,10 @@ func TestPasteInput(t *testing.T) {
 		{"bracketed CRLF", "a\r\nb", true, "\x1b[200~a\nb\x1b[201~"},
 		{"bracketed LF kept", "one\ntwo", true, "\x1b[200~one\ntwo\x1b[201~"},
 		{"bracketed lone CR", "a\rb", true, "\x1b[200~a\nb\x1b[201~"},
+		{"escape stripped", "a\x1b[201~b", false, "a[201~b"},
+		{"escape cannot close bracketed paste", "a\x1b[201~b", true, "\x1b[200~a[201~b\x1b[201~"},
+		{"control characters stripped", "a\x00b\x07c\x7fd", false, "abcd"},
+		{"tabs kept", "a\tb", false, "a\tb"},
 		{"empty", "", false, ""},
 	}
 	for _, tc := range tests {
@@ -94,8 +98,10 @@ func TestPasteLines(t *testing.T) {
 		{"", 0},
 		{"one", 1},
 		{"one\ntwo", 2},
-		{"one\r\ntwo\r\n", 3},
+		{"one\r\ntwo\r\n", 2},
 		{"one\rtwo", 2},
+		{"ls\n", 1},
+		{"\n\n", 0},
 	}
 	for _, tc := range tests {
 		if got := PasteLines(tc.in); got != tc.want {

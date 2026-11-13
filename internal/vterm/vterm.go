@@ -79,6 +79,7 @@ type Terminal struct {
 	current    *screen
 	scrollback []Line
 	maxScroll  int
+	dropped    int
 
 	cursorVisible bool
 	altActive     bool
@@ -267,6 +268,10 @@ func (t *Terminal) CellAt(x, y int) Cell {
 
 // ScrollbackLen returns the number of history lines above the screen.
 func (t *Terminal) ScrollbackLen() int { return len(t.scrollback) }
+
+// Dropped reports how many scrollback lines the limit has discarded. Frontends
+// use it to keep a scrolled-back view anchored when old output falls off.
+func (t *Terminal) Dropped() int { return t.dropped }
 
 // TotalLines returns scrollback plus screen rows.
 func (t *Terminal) TotalLines() int { return len(t.scrollback) + t.rows }
@@ -513,7 +518,9 @@ func (t *Terminal) scrollUp(n int) {
 			t.scrollback = append(t.scrollback, line)
 		}
 		if len(t.scrollback) > t.maxScroll {
-			t.scrollback = t.scrollback[len(t.scrollback)-t.maxScroll:]
+			drop := len(t.scrollback) - t.maxScroll
+			t.scrollback = t.scrollback[drop:]
+			t.dropped += drop
 		}
 	}
 	copy(s.cells[s.top*t.cols:(s.bottom+1)*t.cols], s.cells[(s.top+n)*t.cols:(s.bottom+1)*t.cols])

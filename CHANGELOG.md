@@ -6,6 +6,30 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.8] — 2026-11-13
+
+### Security
+
+- **Pasted control characters are stripped.** ESC, other C0/C1 controls and
+  DEL are removed before a paste is sent, so clipboard text cannot inject key
+  sequences or close a bracketed paste early. Tabs and line breaks are kept.
+
+### Added
+
+- **Copy-on-select, scrollback and line height settings are live.** The
+  desktop settings expose all three, the terminal client uses the configured
+  scrollback, and the new paste toggles apply to open sessions.
+
+### Fixed
+
+- A trailing newline no longer counts as an extra line when deciding whether to
+  confirm a paste.
+- A scrolled-back view stays anchored when a full scrollback drops old lines,
+  in both clients.
+- The terminal client's paste prompt says Paste/Cancel instead of
+  Accept/Reject.
+- The release-script tests now run in CI, and the winget test is tracked.
+
 ## [0.2.7] — 2026-11-13
 
 ### Added
@@ -184,7 +208,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.7...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.8...HEAD
+[0.2.8]: https://github.com/coddan/sextant/compare/v0.2.7...v0.2.8
 [0.2.7]: https://github.com/coddan/sextant/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/coddan/sextant/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/coddan/sextant/compare/v0.2.4...v0.2.5

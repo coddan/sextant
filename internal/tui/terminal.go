@@ -51,9 +51,13 @@ func newTerminalTab(m *Model, host model.Host) *terminalTab {
 	fi := textinput.New()
 	fi.Placeholder = m.tr(i18n.TerminalFindPlaceholder)
 	fi.CharLimit = 128
+	scrollback := m.rt.Store.Settings.Terminal.Scrollback
+	if scrollback <= 0 {
+		scrollback = 10000
+	}
 	tab := &terminalTab{
 		host: host,
-		vt:   vterm.New(cols, rows, 5000),
+		vt:   vterm.New(cols, rows, scrollback),
 		ch:   make(chan tea.Msg, 256),
 		cols: cols,
 		rows: rows,
@@ -111,9 +115,16 @@ func (t *terminalTab) waitCmd() tea.Cmd {
 
 // write feeds remote output into the emulator.
 func (t *terminalTab) write(data []byte) {
+	before, droppedBefore := t.vt.ScrollbackLen(), t.vt.Dropped()
 	_, _ = t.vt.Write(data)
-	// Reset the scroll offset when the user was already at the bottom.
-	t.offset = 0
+	// Stay anchored when the user scrolled back, including lines that fall off
+	// the end of a full scrollback.
+	if t.offset > 0 {
+		t.offset += t.vt.ScrollbackLen() - before + t.vt.Dropped() - droppedBefore
+		if t.offset > t.vt.ScrollbackLen() {
+			t.offset = t.vt.ScrollbackLen()
+		}
+	}
 }
 
 func (t *terminalTab) resize(width, height int) {

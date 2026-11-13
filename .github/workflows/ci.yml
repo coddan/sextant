@@ -22,6 +22,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Run hygiene guard
         run: ./scripts/hygiene-guard.sh
+      - name: Run script tests
+        run: |
+          ./scripts/hygiene-guard.test.sh
+          ./scripts/winget-update.test.sh
 
   build:
     name: Build, vet and test

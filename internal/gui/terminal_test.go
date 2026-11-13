@@ -255,3 +255,40 @@ func TestSingleLinePasteSkipsConfirmation(t *testing.T) {
 		t.Fatalf("sent %q", *got)
 	}
 }
+
+func TestCopyOnSelectHonoursSetting(t *testing.T) {
+	v, a, _ := newShortcutView(t)
+	v.mu.Lock()
+	v.cellW, v.cellH = 10, 20
+	v.mu.Unlock()
+	v.vt.Write([]byte("hello"))
+	a.Clipboard().SetContent("keep")
+
+	v.MouseDown(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)}, Button: desktop.MouseButtonPrimary})
+	v.Dragged(&fyne.DragEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(15, 0)}, Dragged: fyne.NewDelta(15, 0)})
+	v.MouseUp(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(15, 0)}, Button: desktop.MouseButtonPrimary})
+	if got := a.Clipboard().Content(); got != "keep" {
+		t.Fatalf("copy-on-select off copied %q", got)
+	}
+
+	v.CopyOnSelect = true
+	v.MouseDown(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)}, Button: desktop.MouseButtonPrimary})
+	v.Dragged(&fyne.DragEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(15, 0)}, Dragged: fyne.NewDelta(15, 0)})
+	v.MouseUp(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(15, 0)}, Button: desktop.MouseButtonPrimary})
+	if got := a.Clipboard().Content(); got != "he" {
+		t.Fatalf("copy-on-select copied %q, want %q", got, "he")
+	}
+}
+
+func TestScrolledBackViewStaysAnchoredAtCap(t *testing.T) {
+	v := NewTerminalViewWithOptions(13, 5, 1.2)
+	v.vt.Resize(10, 3)
+	for i := 0; i < 12; i++ {
+		v.vt.Write([]byte("line\r\n"))
+	}
+	v.offset = 3
+	v.Write([]byte("more\r\n"))
+	if v.offset != 4 {
+		t.Fatalf("offset after dropped line = %d, want 4", v.offset)
+	}
+}
