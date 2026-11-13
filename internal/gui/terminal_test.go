@@ -134,3 +134,15 @@ func TestWheelScrollsLocalScrollback(t *testing.T) {
 		t.Fatalf("wheel sent %q to a shell without mouse reporting", *got)
 	}
 }
+
+func TestGridCellClampsToViewport(t *testing.T) {
+	if col, row := gridCell(fyne.NewPos(10, 20), 10, 20, 80, 24); col != 1 || row != 1 {
+		t.Fatalf("cell = %d,%d, want 1,1", col, row)
+	}
+	if col, row := gridCell(fyne.NewPos(-5, -5), 10, 20, 80, 24); col != 0 || row != 0 {
+		t.Fatalf("negative cell = %d,%d, want 0,0", col, row)
+	}
+	if col, row := gridCell(fyne.NewPos(5000, 5000), 10, 20, 80, 24); col != 79 || row != 23 {
+		t.Fatalf("overflow cell = %d,%d, want 79,23", col, row)
+	}
+}

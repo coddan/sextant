@@ -129,7 +129,7 @@ func (t *TerminalView) Scrolled(ev *fyne.ScrollEvent) {
 
 	switch {
 	case mouse:
-		col, row := t.cellAt(ev.Position)
+		col, row := t.screenCellAt(ev.Position)
 		for i := 0; i < steps; i++ {
 			t.sendWheel(up, col, row)
 		}
@@ -228,7 +228,7 @@ func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
 		return
 	}
 	t.focus()
-	if ev.Position.X >= t.Size().Width-scrollBarWidth {
+	if t.scrollBarVisible() && ev.Position.X >= t.Size().Width-scrollBarWidth {
 		t.mu.Lock()
 		t.sbDrag = true
 		t.mu.Unlock()
@@ -312,6 +312,40 @@ func (t *TerminalView) DragEnd() {
 	t.sbDrag = false
 	t.mu.Unlock()
 	t.finishSelection()
+}
+
+// scrollBarVisible reports whether the scrollbar is currently drawn.
+func (t *TerminalView) scrollBarVisible() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.vt.ScrollbackLen() > 0 && !t.vt.AltActive()
+}
+
+// screenCellAt returns the viewport cell under pos, clamped to the grid.
+func (t *TerminalView) screenCellAt(pos fyne.Position) (int, int) {
+	cw, ch := t.cellSize()
+	t.mu.Lock()
+	cols, rows := t.vt.Size()
+	t.mu.Unlock()
+	return gridCell(pos, cw, ch, cols, rows)
+}
+
+// gridCell maps a pointer position to a zero-based cell, clamped to the grid.
+func gridCell(pos fyne.Position, cw, ch float32, cols, rows int) (int, int) {
+	col, row := 0, 0
+	if cw > 0 {
+		col = int(pos.X / cw)
+	}
+	if ch > 0 {
+		row = int(pos.Y / ch)
+	}
+	if cols < 1 {
+		cols = 1
+	}
+	if rows < 1 {
+		rows = 1
+	}
+	return clampInt(col, 0, cols-1), clampInt(row, 0, rows-1)
 }
 
 func (t *TerminalView) cellAt(pos fyne.Position) (int, int) {
@@ -796,7 +830,8 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	}
 	t := r.w.vt
 	offset := r.w.offset
-	if t.AltActive() {
+	alt := t.AltActive()
+	if alt {
 		// The alternate screen has no scrollback; show it live.
 		offset = 0
 		r.w.offset = 0
@@ -811,7 +846,7 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	r.w.mu.Unlock()
 
 	r.cols, r.rows = cols, rows
-	r.updateScrollBar(size, sbLen, rows, offset)
+	r.updateScrollBar(size, sbLen, rows, offset, alt)
 	fgDefault := theme.Color(theme.ColorNameForeground)
 	bgDefault := theme.Color(theme.ColorNameBackground)
 	r.bg.FillColor = bgDefault
@@ -1101,8 +1136,8 @@ func composeVisible(t *vterm.Terminal, max int) string {
 	return fmt.Sprintf("%q", text)
 }
 
-func (r *termRenderer) updateScrollBar(size fyne.Size, sbLen, rows, offset int) {
-	if sbLen <= 0 {
+func (r *termRenderer) updateScrollBar(size fyne.Size, sbLen, rows, offset int, alt bool) {
+	if sbLen <= 0 || alt {
 		r.sbTrack.Hide()
 		r.sbThumb.Hide()
 		return

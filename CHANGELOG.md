@@ -6,6 +6,13 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- Wheel events sent to full-screen programs used absolute scrollback line
+  numbers as screen rows, so they pointed outside the viewport.
+- The scrollbar stayed interactive on the alternate screen, where there is no
+  scrollback to scroll.
+
 ## [0.2.4] — 2026-11-13
 
 ### Fixed
