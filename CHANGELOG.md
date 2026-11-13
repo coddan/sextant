@@ -6,6 +6,15 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.7] — 2026-11-13
+
+### Added
+
+- **Paste settings are live.** `bracketed_paste`, `confirm_multiline_paste` and
+  a new `force_bracketed_paste` option are exposed in the desktop and terminal
+  settings. Multi-line pastes are confirmed before they are sent, and forcing
+  bracketed paste covers editors that never request it.
+
 ## [0.2.6] — 2026-11-13
 
 ### Fixed
@@ -175,7 +184,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.6...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.7...HEAD
+[0.2.7]: https://github.com/coddan/sextant/compare/v0.2.6...v0.2.7
 [0.2.6]: https://github.com/coddan/sextant/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/coddan/sextant/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/coddan/sextant/compare/v0.2.3...v0.2.4

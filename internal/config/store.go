@@ -47,7 +47,10 @@ type Terminal struct {
 	SudoAutofill   bool    `json:"sudo_autofill"`
 	CopyOnSelect   bool    `json:"copy_on_select"`
 	BracketedPaste bool    `json:"bracketed_paste"`
-	ConfirmPaste   bool    `json:"confirm_multiline_paste"`
+	// ForceBracketedPaste wraps pastes even when the remote program did not
+	// request it, for editors that support the markers but never ask.
+	ForceBracketedPaste bool `json:"force_bracketed_paste"`
+	ConfirmPaste        bool `json:"confirm_multiline_paste"`
 }
 
 // Notifications configures toast auto-dismiss.

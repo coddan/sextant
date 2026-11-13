@@ -102,7 +102,10 @@ keys to OpenSSH format.
     "font_family": "",           // any installed font
     "font_size": 14,
     "scrollback_lines": 10000,
-    "sudo_autofill": false       // fill sudo's prompt from the host password
+    "sudo_autofill": false,      // fill sudo's prompt from the host password
+    "bracketed_paste": true,     // honour a program's bracketed-paste request
+    "force_bracketed_paste": false, // wrap even if the program did not ask
+    "confirm_multiline_paste": true // ask before pasting several lines
   },
   "notifications": {
     "timeout_seconds": 5,

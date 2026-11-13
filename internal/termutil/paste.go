@@ -19,3 +19,14 @@ func PasteInput(text string, bracketed bool) []byte {
 	text = strings.ReplaceAll(text, "\n", "\r")
 	return []byte(text)
 }
+
+// PasteLines counts the lines in clipboard text, treating CRLF and CR as line
+// breaks. It is used to decide whether a paste needs confirmation.
+func PasteLines(text string) int {
+	if text == "" {
+		return 0
+	}
+	text = strings.ReplaceAll(text, "\r\n", "\n")
+	text = strings.ReplaceAll(text, "\r", "\n")
+	return strings.Count(text, "\n") + 1
+}

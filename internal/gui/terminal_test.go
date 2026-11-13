@@ -192,6 +192,7 @@ func TestPageKeysForwardedOnAlternateScreen(t *testing.T) {
 
 func TestBracketedPasteIsWrapped(t *testing.T) {
 	v, a, got := newShortcutView(t)
+	v.Paste.Bracketed = true
 	v.vt.Write([]byte("\x1b[?2004h"))
 	a.Clipboard().SetContent("one\r\ntwo\n")
 	v.TypedShortcut(&fyne.ShortcutPaste{})
@@ -205,6 +206,52 @@ func TestPlainPasteUsesCarriageReturns(t *testing.T) {
 	a.Clipboard().SetContent("one\r\ntwo")
 	v.TypedShortcut(&fyne.ShortcutPaste{})
 	if string(*got) != "one\rtwo" {
+		t.Fatalf("sent %q", *got)
+	}
+}
+
+func TestMultilinePasteAsksFirst(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	v.Paste = PasteSettings{Bracketed: true, Confirm: true}
+	v.vt.Write([]byte("\x1b[?2004h"))
+	a.Clipboard().SetContent("one\r\ntwo")
+	var lines int
+	var proceed func()
+	v.ConfirmPaste = func(n int, p func()) { lines, proceed = n, p }
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	if lines != 2 {
+		t.Fatalf("asked about %d lines, want 2", lines)
+	}
+	if len(*got) != 0 {
+		t.Fatalf("sent %q before confirmation", *got)
+	}
+	proceed()
+	if string(*got) != "\x1b[200~one\ntwo\x1b[201~" {
+		t.Fatalf("sent %q after confirmation", *got)
+	}
+}
+
+func TestForcedBracketedPaste(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	v.Paste = PasteSettings{Bracketed: true, ForceBracketed: true}
+	a.Clipboard().SetContent("one\ntwo")
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	if string(*got) != "\x1b[200~one\ntwo\x1b[201~" {
+		t.Fatalf("forced paste sent %q", *got)
+	}
+}
+
+func TestSingleLinePasteSkipsConfirmation(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	v.Paste = PasteSettings{Confirm: true}
+	a.Clipboard().SetContent("one")
+	asked := false
+	v.ConfirmPaste = func(int, func()) { asked = true }
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	if asked {
+		t.Fatal("single-line paste asked for confirmation")
+	}
+	if string(*got) != "one" {
 		t.Fatalf("sent %q", *got)
 	}
 }

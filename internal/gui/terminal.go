@@ -36,6 +36,12 @@ type TerminalView struct {
 	OnResize func(cols, rows int)
 	OnFocus  func()
 
+	// Paste controls how clipboard text becomes terminal input.
+	Paste PasteSettings
+	// ConfirmPaste, when set, asks the user before a multi-line paste. The
+	// callback must call proceed to send the text.
+	ConfirmPaste func(lines int, proceed func())
+
 	mu       sync.Mutex
 	size     fyne.Size
 	fontSize float32
@@ -830,6 +836,13 @@ func (t *TerminalView) selectAll() {
 	t.Refresh()
 }
 
+// PasteSettings mirrors the terminal paste options from the configuration.
+type PasteSettings struct {
+	Bracketed      bool // honour the program's bracketed-paste request
+	ForceBracketed bool // use the markers even when the program did not ask
+	Confirm        bool // ask before sending more than one line
+}
+
 func (t *TerminalView) paste() {
 	app := fyne.CurrentApp()
 	if app == nil || app.Clipboard() == nil {
@@ -840,9 +853,17 @@ func (t *TerminalView) paste() {
 		return
 	}
 	t.mu.Lock()
-	bracketed := t.vt.BracketedPaste
+	requested := t.vt.BracketedPaste
 	t.mu.Unlock()
-	t.send(termutil.PasteInput(text, bracketed))
+	bracketed := t.Paste.Bracketed && (requested || t.Paste.ForceBracketed)
+	proceed := func() { t.send(termutil.PasteInput(text, bracketed)) }
+	if t.Paste.Confirm && t.ConfirmPaste != nil {
+		if lines := termutil.PasteLines(text); lines > 1 {
+			t.ConfirmPaste(lines, proceed)
+			return
+		}
+	}
+	proceed()
 }
 
 // CreateRenderer implements fyne.Widget.

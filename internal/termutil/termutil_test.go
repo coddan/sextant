@@ -85,3 +85,21 @@ func TestPasteInput(t *testing.T) {
 		})
 	}
 }
+
+func TestPasteLines(t *testing.T) {
+	tests := []struct {
+		in   string
+		want int
+	}{
+		{"", 0},
+		{"one", 1},
+		{"one\ntwo", 2},
+		{"one\r\ntwo\r\n", 3},
+		{"one\rtwo", 2},
+	}
+	for _, tc := range tests {
+		if got := PasteLines(tc.in); got != tc.want {
+			t.Fatalf("PasteLines(%q) = %d, want %d", tc.in, got, tc.want)
+		}
+	}
+}

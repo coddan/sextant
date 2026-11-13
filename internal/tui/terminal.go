@@ -146,11 +146,12 @@ func (t *terminalTab) sendKey(key tea.KeyMsg) tea.Cmd {
 		t.scrollDown(t.rows / 2)
 		return nil
 	}
-	data := keyBytes(key)
-	if key.Paste {
-		data = termutil.PasteInput(string(key.Runes), t.vt.BracketedPaste)
-	}
-	if len(data) == 0 {
+	return t.writeCmd(keyBytes(key))
+}
+
+// writeCmd sends raw bytes to the remote shell, if it is still open.
+func (t *terminalTab) writeCmd(data []byte) tea.Cmd {
+	if len(data) == 0 || t.shell == nil || t.closed {
 		return nil
 	}
 	shell := t.shell

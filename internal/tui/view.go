@@ -11,6 +11,7 @@ import (
 	"github.com/coddan/sextant/internal/i18n"
 	"github.com/coddan/sextant/internal/model"
 	"github.com/coddan/sextant/internal/sshclient"
+	"github.com/coddan/sextant/internal/termutil"
 )
 
 // View implements tea.Model.
@@ -45,6 +46,9 @@ func (m *Model) View() string {
 	out := lipgloss.JoinVertical(lipgloss.Left, m.header(), body, m.statusBar())
 	if m.prompt != nil {
 		out = m.overlay(out, m.prompt.view(m, m.width))
+	}
+	if m.pastePending != "" {
+		out = m.overlay(out, m.pasteConfirmView())
 	}
 	return out
 }
@@ -669,3 +673,10 @@ func stripANSI(s string) string {
 
 var _ = path.Base
 var _ = model.MonitorSSH
+
+// pasteConfirmView draws the multi-line paste question.
+func (m *Model) pasteConfirmView() string {
+	body := m.tr(i18n.TerminalPasteConfirmBody, termutil.PasteLines(m.pastePending))
+	body += "\n\n" + m.tr(i18n.HostKeyAccept) + " [y]    " + m.tr(i18n.HostKeyReject) + " [n]"
+	return boxStyle.Width(minInt(m.width-4, 72)).Render(body)
+}

@@ -48,6 +48,9 @@ type Model struct {
 	status  string
 	errText string
 
+	// pastePending holds a multi-line paste waiting for confirmation.
+	pastePending string
+
 	// Dashboard state.
 	hosts      []model.Host
 	visible    []model.Host

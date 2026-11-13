@@ -172,6 +172,9 @@ type settingsView struct {
 	sticky         *widget.Check
 	confirmClose   *widget.Check
 	sudo           *widget.Check
+	bracketed      *widget.Check
+	forceBracketed *widget.Check
+	confirmPaste   *widget.Check
 	showIP         *widget.Check
 	collectMetrics *widget.Check
 	refreshSec     *widget.Entry
@@ -205,6 +208,9 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 	v.sticky = widget.NewCheck(g.tr.T(i18n.SettingsStickyErrors), nil)
 	v.confirmClose = widget.NewCheck(g.tr.T(i18n.SettingsConfirmCloseTab), nil)
 	v.sudo = widget.NewCheck(g.tr.T(i18n.TerminalSudoAutofill), nil)
+	v.bracketed = widget.NewCheck(g.tr.T(i18n.TerminalBracketedPaste), nil)
+	v.forceBracketed = widget.NewCheck(g.tr.T(i18n.TerminalForceBracketed), nil)
+	v.confirmPaste = widget.NewCheck(g.tr.T(i18n.TerminalConfirmPaste), nil)
 	v.showIP = widget.NewCheck(g.tr.T(i18n.SettingsShowIP), nil)
 	v.collectMetrics = widget.NewCheck(g.tr.T(i18n.SettingsCollectMetrics), nil)
 	v.fontFamily = widget.NewEntry()
@@ -219,6 +225,9 @@ func (g *App) buildSettingsTab() fyne.CanvasObject {
 		widget.NewFormItem("", v.sticky),
 		widget.NewFormItem("", v.confirmClose),
 		widget.NewFormItem("", v.sudo),
+		widget.NewFormItem("", v.bracketed),
+		widget.NewFormItem("", v.forceBracketed),
+		widget.NewFormItem("", v.confirmPaste),
 		widget.NewFormItem("", v.showIP),
 		widget.NewFormItem(g.tr.T(i18n.SettingsRefreshInterval), v.refreshSec),
 		widget.NewFormItem("", v.collectMetrics),
@@ -256,6 +265,9 @@ func (v *settingsView) refresh() {
 	v.sticky.SetChecked(s.Notifications.StickyErrors)
 	v.confirmClose.SetChecked(s.General.ConfirmCloseTab)
 	v.sudo.SetChecked(s.Terminal.SudoAutofill)
+	v.bracketed.SetChecked(s.Terminal.BracketedPaste)
+	v.forceBracketed.SetChecked(s.Terminal.ForceBracketedPaste)
+	v.confirmPaste.SetChecked(s.Terminal.ConfirmPaste)
 	v.showIP.SetChecked(s.UI.ShowIP)
 	v.collectMetrics.SetChecked(!s.General.MetricsDisabled)
 	v.refreshSec.SetText(strconv.Itoa(s.General.RefreshIntervalSeconds))
@@ -283,6 +295,9 @@ func (v *settingsView) apply() {
 	s.Notifications.StickyErrors = v.sticky.Checked
 	s.General.ConfirmCloseTab = v.confirmClose.Checked
 	s.Terminal.SudoAutofill = v.sudo.Checked
+	s.Terminal.BracketedPaste = v.bracketed.Checked
+	s.Terminal.ForceBracketedPaste = v.forceBracketed.Checked
+	s.Terminal.ConfirmPaste = v.confirmPaste.Checked
 	s.UI.ShowIP = v.showIP.Checked
 	s.General.MetricsDisabled = !v.collectMetrics.Checked
 	s.General.RefreshIntervalSeconds = atoiDefault(v.refreshSec.Text, s.General.RefreshIntervalSeconds)
@@ -299,6 +314,14 @@ func (v *settingsView) apply() {
 	if s.General.MetricsDisabled {
 		clear(v.app.metrics)
 		clear(v.app.metricsRetry)
+	}
+	// Paste options are read at paste time, so open sessions pick them up too.
+	for _, session := range v.app.sessions {
+		session.view.Paste = PasteSettings{
+			Bracketed:      s.Terminal.BracketedPaste,
+			ForceBracketed: s.Terminal.ForceBracketedPaste,
+			Confirm:        s.Terminal.ConfirmPaste,
+		}
 	}
 	v.app.rt.Tr.SetLang(s.UI.Language)
 	v.app.applyTheme()

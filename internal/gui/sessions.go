@@ -106,6 +106,22 @@ func (g *App) openSession(h model.Host, shell *sshclient.Shell, cancel context.C
 	}
 
 	view := NewTerminalView(float32(g.rt.Store.Settings.Terminal.FontSize))
+	termCfg := g.rt.Store.Settings.Terminal
+	view.Paste = PasteSettings{
+		Bracketed:      termCfg.BracketedPaste,
+		ForceBracketed: termCfg.ForceBracketedPaste,
+		Confirm:        termCfg.ConfirmPaste,
+	}
+	view.ConfirmPaste = func(lines int, proceed func()) {
+		dialog.ShowConfirm(
+			g.tr.T(i18n.TerminalPasteConfirmTitle),
+			g.tr.T(i18n.TerminalPasteConfirmBody, lines),
+			func(ok bool) {
+				if ok {
+					proceed()
+				}
+			}, g.win)
+	}
 	s := &terminalSession{
 		app:      g,
 		host:     h,

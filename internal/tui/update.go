@@ -161,6 +161,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.prompt != nil {
 			return m.updatePrompt(key)
 		}
+		if m.pastePending != "" {
+			return m.updatePasteConfirm(key)
+		}
 		return m.updateKey(key)
 	}
 	return m, nil
@@ -408,7 +411,44 @@ func (m *Model) updateTerminal(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.cancel()
 		return m, tea.Quit
 	}
+	if key.Paste {
+		return m.handlePaste(key)
+	}
 	return m, m.term.sendKey(key)
+}
+
+// useBracketedPaste reports whether a paste should carry the bracketed-paste
+// markers, honouring both the program's request and the configuration.
+func (m *Model) useBracketedPaste() bool {
+	cfg := m.rt.Store.Settings.Terminal
+	return cfg.BracketedPaste && (m.term.vt.BracketedPaste || cfg.ForceBracketedPaste)
+}
+
+func (m *Model) pasteCmd(text string) tea.Cmd {
+	return m.term.writeCmd(termutil.PasteInput(text, m.useBracketedPaste()))
+}
+
+// handlePaste sends a paste, asking first when it spans several lines.
+func (m *Model) handlePaste(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	text := string(key.Runes)
+	if m.rt.Store.Settings.Terminal.ConfirmPaste && termutil.PasteLines(text) > 1 {
+		m.pastePending = text
+		return m, nil
+	}
+	return m, m.pasteCmd(text)
+}
+
+// updatePasteConfirm answers the multi-line paste question.
+func (m *Model) updatePasteConfirm(key tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch key.String() {
+	case "y", "Y", "enter":
+		text := m.pastePending
+		m.pastePending = ""
+		return m, m.pasteCmd(text)
+	case "n", "N", "esc", "q":
+		m.pastePending = ""
+	}
+	return m, nil
 }
 
 func (m *Model) updateSnippets(key tea.KeyMsg) (tea.Model, tea.Cmd) {
