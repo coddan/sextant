@@ -6,6 +6,15 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.5] — 2026-11-13
+
+### Added
+
+- **Mouse clicks and drags reach full-screen programs.** When a program enables
+  mouse reporting, presses, drags and motion are forwarded to it, as in PuTTY
+  and xterm. Hold `Shift` to select text locally instead, or use `Shift` with
+  the wheel to scroll Sextant's own scrollback.
+
 ### Fixed
 
 - Wheel events sent to full-screen programs used absolute scrollback line
@@ -156,7 +165,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.4...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.5...HEAD
+[0.2.5]: https://github.com/coddan/sextant/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/coddan/sextant/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/coddan/sextant/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/coddan/sextant/compare/v0.2.1...v0.2.2

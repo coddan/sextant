@@ -47,6 +47,10 @@ type TerminalView struct {
 	// meaning while the view scrolls or new output arrives. End positions are
 	// inclusive for rendering and converted to exclusive rune offsets on copy.
 	sbDrag                      bool
+	reporting                   bool
+	reportButton                int
+	reportMode                  int
+	altWas                      bool
 	selecting                   bool
 	hasSelection                bool
 	selAnchorLine, selAnchorCol int
@@ -58,6 +62,7 @@ var (
 	_ fyne.Tabbable          = (*TerminalView)(nil)
 	_ fyne.Draggable         = (*TerminalView)(nil)
 	_ desktop.Mouseable      = (*TerminalView)(nil)
+	_ desktop.Hoverable      = (*TerminalView)(nil)
 	_ fyne.SecondaryTappable = (*TerminalView)(nil)
 )
 
@@ -122,6 +127,16 @@ func (t *TerminalView) Scrolled(ev *fyne.ScrollEvent) {
 		steps = 5
 	}
 
+	if currentModifiers()&fyne.KeyModifierShift != 0 {
+		// Shift forces local scrollback, as in PuTTY, even for programs that
+		// requested mouse reporting.
+		t.mu.Lock()
+		t.offset = clampInt(t.offset+int(ev.Scrolled.DY)*3, 0, t.vt.ScrollbackLen())
+		t.mu.Unlock()
+		t.Refresh()
+		return
+	}
+
 	t.mu.Lock()
 	mouse := t.vt.MouseMode != 0
 	alt := t.vt.AltActive()
@@ -163,12 +178,8 @@ func mouseWheelSequence(up bool, col, row int, sgr bool) []byte {
 	if up {
 		button = 64
 	}
-	if sgr {
-		return []byte(fmt.Sprintf("\x1b[<%d;%d;%dM\x1b[<%d;%d;%dm", button, col+1, row+1, button, col+1, row+1))
-	}
-	// X10: press uses the button, release is always button 3.
-	return []byte{0x1b, '[', 'M', byte(32 + button), byte(32 + col + 1), byte(32 + row + 1),
-		0x1b, '[', 'M', 32 + 3, byte(32 + col + 1), byte(32 + row + 1)}
+	out := mouseSequence(button, col, row, sgr, false)
+	return append(out, mouseSequence(button, col, row, sgr, true)...)
 }
 
 // pageScroll moves ten lines, or forwards PageUp/PageDown to the alternate
@@ -200,10 +211,83 @@ func (t *TerminalView) Tapped(*fyne.PointEvent) {
 	t.focus()
 }
 
-// TappedSecondary pastes, as PuTTY and SecureCRT do by default.
+// TappedSecondary pastes, as PuTTY and SecureCRT do by default, unless a
+// program has asked for mouse reports.
 func (t *TerminalView) TappedSecondary(*fyne.PointEvent) {
 	t.focus()
+	if t.shouldReportMouse(currentModifiers()) {
+		return
+	}
 	t.paste()
+}
+
+// currentModifiers returns the keys held right now, if the driver knows.
+func currentModifiers() fyne.KeyModifier {
+	app := fyne.CurrentApp()
+	if app == nil {
+		return 0
+	}
+	if d, ok := app.Driver().(desktop.Driver); ok {
+		return d.CurrentKeyModifiers()
+	}
+	return 0
+}
+
+// shouldReportMouse reports whether a click belongs to the remote program.
+// Shift always selects text locally instead.
+func (t *TerminalView) shouldReportMouse(mods fyne.KeyModifier) bool {
+	if mods&fyne.KeyModifierShift != 0 {
+		return false
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.vt.MouseMode != 0
+}
+
+// mouseButtonNumber maps a Fyne button to the xterm button code.
+func mouseButtonNumber(b desktop.MouseButton) int {
+	switch b {
+	case desktop.MouseButtonPrimary:
+		return 0
+	case desktop.MouseButtonTertiary:
+		return 1
+	case desktop.MouseButtonSecondary:
+		return 2
+	}
+	return -1
+}
+
+// mouseModifierBits encodes held modifiers into an xterm button code.
+func mouseModifierBits(mods fyne.KeyModifier) int {
+	bits := 0
+	if mods&fyne.KeyModifierShift != 0 {
+		bits += 4
+	}
+	if mods&fyne.KeyModifierAlt != 0 {
+		bits += 8
+	}
+	if mods&fyne.KeyModifierControl != 0 {
+		bits += 16
+	}
+	return bits
+}
+
+// mouseSequence encodes one mouse event. button is the xterm button number
+// (0/1/2, 64/65 for the wheel, 3 for no button) and motion adds 32.
+// Release reports the button in SGR mode and button 3 in X10 mode.
+func mouseSequence(button, col, row int, sgr, release bool) []byte {
+	if sgr {
+		final := byte('M')
+		if release {
+			final = 'm'
+		}
+		return []byte(fmt.Sprintf("\x1b[<%d;%d;%d%c", button, col+1, row+1, final))
+	}
+	b := 32 + button
+	if release {
+		b = 32 + 3
+	}
+	return []byte{0x1b, '[', 'M', byte(b), byte(32 + col + 1), byte(32 + row + 1)}
 }
 
 func (t *TerminalView) focus() {
@@ -224,15 +308,19 @@ func (t *TerminalView) FocusLost()   {}
 // MouseDown starts a text selection and focuses the pane, matching normal
 // terminal behaviour without swallowing keyboard focus after a drag.
 func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
-	if ev.Button != desktop.MouseButtonPrimary {
-		return
-	}
 	t.focus()
-	if t.scrollBarVisible() && ev.Position.X >= t.Size().Width-scrollBarWidth {
+	if ev.Button == desktop.MouseButtonPrimary && t.scrollBarVisible() && ev.Position.X >= t.Size().Width-scrollBarWidth {
 		t.mu.Lock()
 		t.sbDrag = true
 		t.mu.Unlock()
 		t.scrollToY(ev.Position.Y)
+		return
+	}
+	if t.shouldReportMouse(ev.Modifier) {
+		t.beginMouseReport(ev)
+		return
+	}
+	if ev.Button != desktop.MouseButtonPrimary {
 		return
 	}
 	line, col := t.cellAt(ev.Position)
@@ -245,11 +333,61 @@ func (t *TerminalView) MouseDown(ev *desktop.MouseEvent) {
 	t.Refresh()
 }
 
-func (t *TerminalView) MouseUp(*desktop.MouseEvent) {
+// beginMouseReport forwards a button press to a program using mouse reporting.
+func (t *TerminalView) beginMouseReport(ev *desktop.MouseEvent) {
+	button := mouseButtonNumber(ev.Button)
+	if button < 0 {
+		return
+	}
+	col, row := t.screenCellAt(ev.Position)
 	t.mu.Lock()
-	t.sbDrag = false
+	sgr, mode := t.vt.MouseSGR, t.vt.MouseMode
 	t.mu.Unlock()
+	button += mouseModifierBits(ev.Modifier)
+	t.send(mouseSequence(button, col, row, sgr, false))
+	t.mu.Lock()
+	t.reporting = true
+	t.reportButton = button
+	t.reportMode = mode
+	t.mu.Unlock()
+}
+
+func (t *TerminalView) MouseUp(ev *desktop.MouseEvent) {
+	t.mu.Lock()
+	sbDrag := t.sbDrag
+	t.sbDrag = false
+	reporting := t.reporting
+	t.reporting = false
+	button, mode := t.reportButton, t.reportMode
+	sgr := t.vt.MouseSGR
+	t.mu.Unlock()
+	if sbDrag {
+		return
+	}
+	if reporting {
+		if mode != 9 { // X10 mode sends presses only.
+			col, row := t.screenCellAt(ev.Position)
+			t.send(mouseSequence(button, col, row, sgr, true))
+		}
+		return
+	}
 	t.finishSelection()
+}
+
+// MouseIn and MouseOut implement desktop.Hoverable for motion reporting.
+func (t *TerminalView) MouseIn(*desktop.MouseEvent) {}
+func (t *TerminalView) MouseOut()                   {}
+
+// MouseMoved reports pointer motion in mode 1003.
+func (t *TerminalView) MouseMoved(ev *desktop.MouseEvent) {
+	t.mu.Lock()
+	mode, sgr, reporting := t.vt.MouseMode, t.vt.MouseSGR, t.reporting
+	t.mu.Unlock()
+	if mode != 1003 || reporting {
+		return
+	}
+	col, row := t.screenCellAt(ev.Position)
+	t.send(mouseSequence(3+32, col, row, sgr, false))
 }
 
 // scrollToY maps a pointer height on the scrollbar to a scroll offset.
@@ -289,10 +427,19 @@ func (t *TerminalView) finishSelection() {
 // Dragged extends the selection to the cell under the pointer.
 func (t *TerminalView) Dragged(ev *fyne.DragEvent) {
 	t.mu.Lock()
-	drag := t.sbDrag
+	drag, reporting := t.sbDrag, t.reporting
+	button, mode := t.reportButton, t.reportMode
+	sgr := t.vt.MouseSGR
 	t.mu.Unlock()
 	if drag {
 		t.scrollToY(ev.Position.Y)
+		return
+	}
+	if reporting {
+		if mode == 1002 || mode == 1003 {
+			col, row := t.screenCellAt(ev.Position)
+			t.send(mouseSequence(button+32, col, row, sgr, false))
+		}
 		return
 	}
 	line, col := t.cellAt(ev.Position)
@@ -831,12 +978,17 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	t := r.w.vt
 	offset := r.w.offset
 	alt := t.AltActive()
-	if alt {
-		// The alternate screen has no scrollback; show it live.
+	if alt != r.w.altWas {
+		// Entering or leaving a full-screen program returns to the live screen.
 		offset = 0
 		r.w.offset = 0
+		r.w.altWas = alt
 	}
 	sbLen := t.ScrollbackLen()
+	if offset > sbLen {
+		offset = sbLen
+		r.w.offset = sbLen
+	}
 	cx, cy, cursorVisible := t.Cursor()
 	hasSelection := r.w.hasSelection
 	selStartLine, selStartCol, selEndLine, selEndCol := 0, 0, 0, 0
@@ -846,7 +998,7 @@ func (r *termRenderer) rebuild(size fyne.Size) {
 	r.w.mu.Unlock()
 
 	r.cols, r.rows = cols, rows
-	r.updateScrollBar(size, sbLen, rows, offset, alt)
+	r.updateScrollBar(size, sbLen, rows, offset)
 	fgDefault := theme.Color(theme.ColorNameForeground)
 	bgDefault := theme.Color(theme.ColorNameBackground)
 	r.bg.FillColor = bgDefault
@@ -1136,8 +1288,8 @@ func composeVisible(t *vterm.Terminal, max int) string {
 	return fmt.Sprintf("%q", text)
 }
 
-func (r *termRenderer) updateScrollBar(size fyne.Size, sbLen, rows, offset int, alt bool) {
-	if sbLen <= 0 || alt {
+func (r *termRenderer) updateScrollBar(size fyne.Size, sbLen, rows, offset int) {
+	if sbLen <= 0 {
 		r.sbTrack.Hide()
 		r.sbThumb.Hide()
 		return

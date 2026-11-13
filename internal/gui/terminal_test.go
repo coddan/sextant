@@ -146,3 +146,46 @@ func TestGridCellClampsToViewport(t *testing.T) {
 		t.Fatalf("overflow cell = %d,%d, want 79,23", col, row)
 	}
 }
+
+func TestMouseReportForwardsClicksAndDrags(t *testing.T) {
+	v, _, got := newShortcutView(t)
+	v.mu.Lock()
+	v.cellW, v.cellH = 10, 20
+	v.mu.Unlock()
+	v.vt.Write([]byte("\x1b[?1002h\x1b[?1006h"))
+	pos := fyne.NewPos(15, 25)
+	v.MouseDown(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: pos}, Button: desktop.MouseButtonPrimary})
+	v.Dragged(&fyne.DragEvent{PointEvent: fyne.PointEvent{Position: pos}, Dragged: fyne.NewDelta(1, 1)})
+	v.MouseUp(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: pos}, Button: desktop.MouseButtonPrimary})
+	want := "\x1b[<0;2;2M\x1b[<32;2;2M\x1b[<0;2;2m"
+	if string(*got) != want {
+		t.Fatalf("mouse report = %q, want %q", *got, want)
+	}
+	if v.hasSelection {
+		t.Fatal("drag with mouse reporting must not select text")
+	}
+}
+
+func TestShiftClickSelectsLocally(t *testing.T) {
+	v, _, got := newShortcutView(t)
+	v.vt.Write([]byte("\x1b[?1000h"))
+	v.MouseDown(&desktop.MouseEvent{
+		PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)},
+		Button:     desktop.MouseButtonPrimary,
+		Modifier:   fyne.KeyModifierShift,
+	})
+	v.MouseUp(&desktop.MouseEvent{PointEvent: fyne.PointEvent{Position: fyne.NewPos(0, 0)}, Button: desktop.MouseButtonPrimary})
+	if len(*got) != 0 {
+		t.Fatalf("shift+click sent %q to the program", *got)
+	}
+}
+
+func TestPageKeysForwardedOnAlternateScreen(t *testing.T) {
+	v, _, got := newShortcutView(t)
+	v.vt.Write([]byte("\x1b[?1049h"))
+	v.TypedKey(&fyne.KeyEvent{Name: fyne.KeyPageUp})
+	v.TypedKey(&fyne.KeyEvent{Name: fyne.KeyPageDown})
+	if string(*got) != "\x1b[5~\x1b[6~" {
+		t.Fatalf("sent %q, want page keys", *got)
+	}
+}

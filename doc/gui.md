@@ -155,3 +155,8 @@ programs it is sent to the program, or turned into cursor keys when the program
 has not enabled mouse reporting, so `vim` and `less` scroll as expected.
 `PageUp`/`PageDown` likewise go to full-screen programs. A scrollbar appears on
 the right while there is scrollback.
+
+Programs that enable mouse reporting (for example `vim` with `mouse=a`) also
+receive clicks and drags. Hold `Shift` while clicking or dragging to select text
+locally, and `Shift` with the wheel to scroll Sextant's own scrollback instead of
+the program.
