@@ -13,6 +13,7 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 
+	"github.com/coddan/sextant/internal/termutil"
 	"github.com/coddan/sextant/internal/vterm"
 )
 
@@ -838,7 +839,10 @@ func (t *TerminalView) paste() {
 	if text == "" {
 		return
 	}
-	t.send([]byte(text))
+	t.mu.Lock()
+	bracketed := t.vt.BracketedPaste
+	t.mu.Unlock()
+	t.send(termutil.PasteInput(text, bracketed))
 }
 
 // CreateRenderer implements fyne.Widget.

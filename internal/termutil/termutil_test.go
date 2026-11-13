@@ -61,3 +61,27 @@ func TestThrottle(t *testing.T) {
 		t.Fatal("call after Reset must be allowed")
 	}
 }
+
+func TestPasteInput(t *testing.T) {
+	tests := []struct {
+		name      string
+		in        string
+		bracketed bool
+		want      string
+	}{
+		{"plain CRLF", "a\r\nb", false, "a\rb"},
+		{"plain LF", "one\ntwo", false, "one\rtwo"},
+		{"plain trailing newline", "ls\n", false, "ls\r"},
+		{"bracketed CRLF", "a\r\nb", true, "\x1b[200~a\nb\x1b[201~"},
+		{"bracketed LF kept", "one\ntwo", true, "\x1b[200~one\ntwo\x1b[201~"},
+		{"bracketed lone CR", "a\rb", true, "\x1b[200~a\nb\x1b[201~"},
+		{"empty", "", false, ""},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := string(PasteInput(tc.in, tc.bracketed)); got != tc.want {
+				t.Fatalf("PasteInput(%q, %v) = %q, want %q", tc.in, tc.bracketed, got, tc.want)
+			}
+		})
+	}
+}

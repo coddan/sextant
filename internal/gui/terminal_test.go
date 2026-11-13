@@ -189,3 +189,22 @@ func TestPageKeysForwardedOnAlternateScreen(t *testing.T) {
 		t.Fatalf("sent %q, want page keys", *got)
 	}
 }
+
+func TestBracketedPasteIsWrapped(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	v.vt.Write([]byte("\x1b[?2004h"))
+	a.Clipboard().SetContent("one\r\ntwo\n")
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	if string(*got) != "\x1b[200~one\ntwo\n\x1b[201~" {
+		t.Fatalf("sent %q", *got)
+	}
+}
+
+func TestPlainPasteUsesCarriageReturns(t *testing.T) {
+	v, a, got := newShortcutView(t)
+	a.Clipboard().SetContent("one\r\ntwo")
+	v.TypedShortcut(&fyne.ShortcutPaste{})
+	if string(*got) != "one\rtwo" {
+		t.Fatalf("sent %q", *got)
+	}
+}

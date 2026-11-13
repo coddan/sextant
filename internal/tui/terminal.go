@@ -147,6 +147,9 @@ func (t *terminalTab) sendKey(key tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	data := keyBytes(key)
+	if key.Paste {
+		data = termutil.PasteInput(string(key.Runes), t.vt.BracketedPaste)
+	}
 	if len(data) == 0 {
 		return nil
 	}

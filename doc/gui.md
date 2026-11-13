@@ -148,7 +148,9 @@ terminal, work without mouse selection. Drag with the mouse to select text; the 
 right-click pastes, as in PuTTY.
 `Ctrl+Shift+C` (or `Ctrl+Insert`, `Cmd+C` on macOS) copies the selection, or the
 whole buffer when nothing is selected. `Ctrl+V`, `Ctrl+Shift+V` and
-`Shift+Insert` paste. `Ctrl+C` still interrupts the running command.
+`Shift+Insert` paste. `Ctrl+C` still interrupts the running command. Pasted
+text keeps its line endings, and programs that enable bracketed paste receive
+the clipboard unchanged, so multi-line pastes into `vim` are not re-indented.
 
 The mouse wheel scrolls the local scrollback in a shell. In full-screen
 programs it is sent to the program, or turned into cursor keys when the program

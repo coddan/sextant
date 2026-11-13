@@ -6,6 +6,16 @@ All notable changes to Sextant are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.6] — 2026-11-13
+
+### Fixed
+
+- **Paste no longer mangles text.** Line endings are normalised, and a paste
+  into a program that enabled bracketed paste is wrapped in the bracketed-paste
+  markers. Editors such as `vim` now insert the clipboard literally instead of
+  applying auto-indent to every line, and Windows CRLF text no longer becomes
+  double line breaks. The terminal client uses the same logic.
+
 ## [0.2.5] — 2026-11-13
 
 ### Added
@@ -165,7 +175,8 @@ Sextant is a Go implementation of the SSH dashboard: one engine, two clients.
 - English and Simplified Chinese are compiled in, with no external dependency.
   A test fails if any key is missing from any language.
 
-[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.5...HEAD
+[Unreleased]: https://github.com/coddan/sextant/compare/v0.2.6...HEAD
+[0.2.6]: https://github.com/coddan/sextant/compare/v0.2.5...v0.2.6
 [0.2.5]: https://github.com/coddan/sextant/compare/v0.2.4...v0.2.5
 [0.2.4]: https://github.com/coddan/sextant/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/coddan/sextant/compare/v0.2.2...v0.2.3
